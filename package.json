@@ -1,0 +1,47 @@
+{
+  "name": "diamond-contracts-dao",
+  "version": "0.1.0",
+  "description": "DMD DAO contracts",
+  "main": "index.js",
+  "scripts": {
+    "compile": "npx hardhat compile --force",
+    "test": "npx hardhat test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DMDcoin/diamond-contracts-dao.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/DMDcoin/diamond-contracts-dao/issues"
+  },
+  "homepage": "https://github.com/DMDcoin/diamond-contracts-dao#readme",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.2",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.9",
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "@openzeppelin/hardhat-upgrades": "^2.2.1",
+    "chai": "^4.3.6",
+    "ethers": "^6.7.1",
+    "hardhat": "^2.17.2",
+    "hardhat-contract-sizer": "^2.6.1",
+    "hardhat-tracer": "^2.6.0",
+    "lodash": "^4.17.21",
+    "solidity-coverage": "^0.8.2",
+    "typescript": "^5.2.2"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.3",
+    "@openzeppelin/contracts-upgradeable": "^4.9.3",
+    "@types/lodash": "^4.14.195",
+    "dotenv": "^16.0.1",
+    "hardhat-gas-reporter": "^1.0.9",
+    "install": "^0.13.0",
+    "npm": "^10.1.0",
+    "prettier": "^2.7.1",
+    "prettier-plugin-solidity": "^1.0.0-beta.19",
+    "solhint": "^3.3.7",
+    "solhint-plugin-prettier": "^0.0.5"
+  }
+}
