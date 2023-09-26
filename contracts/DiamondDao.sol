@@ -5,7 +5,8 @@ import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Addr
 import {EnumerableSetUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 
 import {IDiamondDao} from "./interfaces/IDiamondDao.sol";
-import {Proposal, ProposalState, ProposalStatistic, Vote} from "./library/DaoStructs.sol";
+import {IValidatorSetHbbft} from "./interfaces/IValidatorSetHbbft.sol";
+import {Proposal, ProposalState, ProposalStatistic, Vote, VoteRecord} from "./library/DaoStructs.sol";
 
 /// Diamond DAO central point of operation.
 /// - Manages the DAO funds.
@@ -19,16 +20,25 @@ contract DiamondDao is IDiamondDao, Initializable {
 
     address public reinsertPot;
     uint256 public createProposalFee;
+    IValidatorSetHbbft public validatorSet;
 
     ProposalStatistic public statistic;
 
     mapping(uint256 => Proposal) public proposals;
-    mapping(uint256 => mapping(address => Vote)) public votes;
-    mapping(uint256 => EnumerableSetUpgradeable.AddressSet) private _proposalVoters;
+    mapping(uint256 => mapping(address => VoteRecord)) public votes;
+    mapping(uint256 => EnumerableSetUpgradeable.AddressSet)
+        private _proposalVoters;
 
     modifier exists(uint256 proposalId) {
         if (proposalExists(proposalId)) {
             revert ProposalNotExist(proposalId);
+        }
+        _;
+    }
+
+    modifier onlyValidator() {
+        if (!_isValidator(msg.sender)) {
+            revert OnlyValidators(msg.sender);
         }
         _;
     }
@@ -40,13 +50,19 @@ contract DiamondDao is IDiamondDao, Initializable {
     }
 
     function initialize(
+        address _validatorSet,
         address _reinsertPot,
         uint256 _createProposalFee
     ) external initializer {
-        if (_reinsertPot == address(0) || _createProposalFee == 0) {
+        if (
+            _validatorSet == address(0) ||
+            _reinsertPot == address(0) ||
+            _createProposalFee == 0
+        ) {
             revert InvalidArgument();
         }
 
+        validatorSet = IValidatorSetHbbft(_validatorSet);
         reinsertPot = _reinsertPot;
         createProposalFee = _createProposalFee;
     }
@@ -97,12 +113,28 @@ contract DiamondDao is IDiamondDao, Initializable {
 
     function cancel(uint256 proposalId) external exists(proposalId) {}
 
-    function vote(uint256 proposalId) external exists(proposalId) {}
+    function vote(
+        uint256 proposalId,
+        Vote _vote
+    ) external exists(proposalId) onlyValidator {
+        address voter = msg.sender;
+
+        _submitVote(voter, proposalId, _vote, "");
+
+        emit SubmitVote(voter, proposalId, _vote);
+    }
 
     function voteWithReason(
         uint256 proposalId,
+        Vote _vote,
         string calldata reason
-    ) external exists(proposalId) {}
+    ) external exists(proposalId) onlyValidator {
+        address voter = msg.sender;
+
+        _submitVote(voter, proposalId, _vote, reason);
+
+        emit SubmitVoteWithReason(voter, proposalId, _vote, reason);
+    }
 
     function finalize(uint256 proposalId) external exists(proposalId) {}
 
@@ -113,9 +145,7 @@ contract DiamondDao is IDiamondDao, Initializable {
 
         Proposal storage proposal = proposals[proposalId];
 
-        if (proposal.state != ProposalState.Accepted) {
-            revert ProposalCannotBeExecuted(proposalId, proposal.state);
-        }
+        _requireState(proposalId, ProposalState.Accepted);
 
         proposal.state = ProposalState.Executed;
 
@@ -124,7 +154,17 @@ contract DiamondDao is IDiamondDao, Initializable {
             proposal.values,
             proposal.calldatas
         );
+
+        emit ProposalExecuted(msg.sender, proposalId);
     }
+
+    function getProposalVoters(
+        uint256 proposalId
+    ) external view returns (address[] memory) {
+        return _proposalVoters[proposalId].values();
+    }
+
+    function countVotes(uint256 proposalId) public {}
 
     function proposalExists(uint256 proposalId) public view returns (bool) {
         return proposals[proposalId].proposer != address(0);
@@ -135,8 +175,6 @@ contract DiamondDao is IDiamondDao, Initializable {
     ) public view returns (Proposal memory) {
         return proposals[proposalId];
     }
-
-    function countVotes(uint256 proposalId) public {}
 
     function hashProposal(
         address[] memory targets,
@@ -152,13 +190,28 @@ contract DiamondDao is IDiamondDao, Initializable {
             );
     }
 
-    function _vote(uint256 proposalId, string calldata reason) internal {}
+    function _submitVote(
+        address voter,
+        uint256 proposalId,
+        Vote _vote,
+        string memory reason
+    ) private {
+        _requireState(proposalId, ProposalState.Active);
+
+        _proposalVoters[proposalId].add(voter);
+        votes[proposalId][voter] = VoteRecord({
+            voter: voter,
+            timestamp: uint64(block.timestamp),
+            vote: _vote,
+            reason: reason
+        });
+    }
 
     function _executeOperations(
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas
-    ) internal {
+    ) private {
         for (uint256 i = 0; i < targets.length; ++i) {
             (bool success, bytes memory returndata) = targets[i].call{
                 value: values[i]
@@ -171,12 +224,33 @@ contract DiamondDao is IDiamondDao, Initializable {
         }
     }
 
-    function _transferNative(address recipient, uint256 amount) internal {
+    function _transferNative(address recipient, uint256 amount) private {
         // solhint-disable-next-line avoid-low-level-calls
         (bool success, ) = recipient.call{value: amount}("");
         if (!success) {
             revert TransferFailed(address(this), recipient, amount);
         }
+    }
+
+    function _requireState(
+        uint256 _proposalId,
+        ProposalState _state
+    ) private view {
+        ProposalState state = getProposal(_proposalId).state;
+
+        if (state != _state) {
+            revert UnexpectedProposalState(_proposalId, state);
+        }
+    }
+
+    function _isValidator(address stakingAddress) private view returns (bool) {
+        address miningAddress = validatorSet.miningByStakingAddress(
+            stakingAddress
+        );
+
+        return
+            miningAddress != address(0) &&
+            validatorSet.validatorAvailableSince(miningAddress) != 0;
     }
 
     /// this list would go on forever,

@@ -20,6 +20,7 @@ struct VoteRecord {
     address voter;
     uint64 timestamp;
     Vote vote;
+    string reason;
 }
 
 struct Proposal {

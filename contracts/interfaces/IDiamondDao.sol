@@ -17,6 +17,8 @@ interface IDiamondDao {
         uint256 indexed proposalId
     );
 
+    event ProposalExecuted(address indexed caller, uint256 indexed proposalId);
+
     event SubmitVote(
         address indexed voter,
         uint256 indexed proposalId,
@@ -25,17 +27,18 @@ interface IDiamondDao {
 
     event SubmitVoteWithReason(
         address indexed voter,
-        uint256 indexed porposalId,
+        uint256 indexed proposalId,
         Vote vote,
         string reason
     );
 
     error InsufficientFunds();
     error InvalidArgument();
+    error OnlyValidators(address caller);
     error ProposalAlreadyExist(uint256 proposalId);
     error ProposalNotExist(uint256 proposalId);
-    error ProposalCannotBeExecuted(uint256 proposalId, ProposalState state);
     error TransferFailed(address from, address to, uint256 amount);
+    error UnexpectedProposalState(uint256 proposalId, ProposalState state);
 
     function propose(
         address[] memory targets,
@@ -46,10 +49,11 @@ interface IDiamondDao {
 
     function cancel(uint256 proposalId) external;
 
-    function vote(uint256 proposalId) external;
+    function vote(uint256 proposalId, Vote _vote) external;
 
     function voteWithReason(
         uint256 proposalId,
+        Vote _vote,
         string calldata reason
     ) external;
 
