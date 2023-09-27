@@ -2,7 +2,6 @@
   "name": "diamond-contracts-dao",
   "version": "0.1.0",
   "description": "DMD DAO contracts",
-  "main": "index.js",
   "scripts": {
     "compile": "npx hardhat compile --force",
     "test": "npx hardhat test"
@@ -38,7 +37,6 @@
     "dotenv": "^16.0.1",
     "hardhat-gas-reporter": "^1.0.9",
     "install": "^0.13.0",
-    "npm": "^10.1.0",
     "prettier": "^2.7.1",
     "prettier-plugin-solidity": "^1.0.0-beta.19",
     "solhint": "^3.3.7",

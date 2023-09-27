@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.17;
 
 import {Proposal, ProposalState, Vote} from "../library/DaoStructs.sol";
@@ -14,7 +15,8 @@ interface IDiamondDao {
 
     event ProposalCanceled(
         address indexed proposer,
-        uint256 indexed proposalId
+        uint256 indexed proposalId,
+        string reason
     );
 
     event ProposalExecuted(address indexed caller, uint256 indexed proposalId);
@@ -34,6 +36,7 @@ interface IDiamondDao {
 
     error InsufficientFunds();
     error InvalidArgument();
+    error OnlyProposer();
     error OnlyValidators(address caller);
     error ProposalAlreadyExist(uint256 proposalId);
     error ProposalNotExist(uint256 proposalId);
@@ -47,7 +50,7 @@ interface IDiamondDao {
         string memory description
     ) external payable;
 
-    function cancel(uint256 proposalId) external;
+    function cancel(uint256 proposalId, string calldata reason) external;
 
     function vote(uint256 proposalId, Vote _vote) external;
 

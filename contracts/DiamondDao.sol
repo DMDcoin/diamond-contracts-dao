@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.17;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -73,7 +74,17 @@ contract DiamondDao is IDiamondDao, Initializable {
         bytes[] memory calldatas,
         string memory description
     ) external payable {
-        address proposer = msg.sender;
+        if (
+            targets.length != values.length ||
+            targets.length != calldatas.length ||
+            targets.length == 0
+        ) {
+            revert InvalidArgument();
+        }
+
+        if (msg.value != createProposalFee) {
+            revert InsufficientFunds();
+        }
 
         uint256 proposalId = hashProposal(
             targets,
@@ -86,9 +97,7 @@ contract DiamondDao is IDiamondDao, Initializable {
             revert ProposalAlreadyExist(proposalId);
         }
 
-        if (msg.value != createProposalFee) {
-            revert InsufficientFunds();
-        }
+        address proposer = msg.sender;
 
         proposals[proposalId] = Proposal({
             proposer: proposer,
@@ -98,6 +107,8 @@ contract DiamondDao is IDiamondDao, Initializable {
             calldatas: calldatas,
             description: description
         });
+
+        statistic.total += 1;
 
         _transferNative(reinsertPot, msg.value);
 
@@ -111,7 +122,23 @@ contract DiamondDao is IDiamondDao, Initializable {
         );
     }
 
-    function cancel(uint256 proposalId) external exists(proposalId) {}
+    function cancel(
+        uint256 proposalId,
+        string calldata reason
+    ) external exists(proposalId) {
+        _requireState(proposalId, ProposalState.Created);
+
+        Proposal storage proposal = proposals[proposalId];
+
+        if (msg.sender != proposal.proposer) {
+            revert OnlyProposer();
+        }
+
+        proposal.state = ProposalState.Canceled;
+        statistic.canceled += 1;
+
+        emit ProposalCanceled(msg.sender, proposalId, reason);
+    }
 
     function vote(
         uint256 proposalId,
@@ -136,16 +163,20 @@ contract DiamondDao is IDiamondDao, Initializable {
         emit SubmitVoteWithReason(voter, proposalId, _vote, reason);
     }
 
-    function finalize(uint256 proposalId) external exists(proposalId) {}
+    function finalize(uint256 proposalId) external exists(proposalId) {
+        bool accepted = true;
+
+        if (accepted) {
+            statistic.accepted += 1;
+        } else {
+            statistic.declined += 1;
+        }
+    }
 
     function execute(uint256 proposalId) external exists(proposalId) {
-        if (!proposalExists(proposalId)) {
-            revert ProposalNotExist(proposalId);
-        }
+        _requireState(proposalId, ProposalState.Accepted);
 
         Proposal storage proposal = proposals[proposalId];
-
-        _requireState(proposalId, ProposalState.Accepted);
 
         proposal.state = ProposalState.Executed;
 
@@ -156,6 +187,12 @@ contract DiamondDao is IDiamondDao, Initializable {
         );
 
         emit ProposalExecuted(msg.sender, proposalId);
+    }
+
+    function getProposalVotersCount(
+        uint256 proposalId
+    ) external view returns (uint256) {
+        return _proposalVoters[proposalId].length();
     }
 
     function getProposalVoters(

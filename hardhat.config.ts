@@ -1,7 +1,10 @@
+import fs from "fs";
+
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
-import fs from "fs";
+import "@openzeppelin/hardhat-upgrades";
+import "hardhat-contract-sizer";
 
 
 let mnemonic = 'inspire school random normal account steel strike shove close album produce cube bounce memory before';
@@ -24,17 +27,23 @@ const config: HardhatUserConfig = {
     },
   },
   solidity: {
-    version: "0.8.20",
+    version: "0.8.17",
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
+        runs: 800,
         details: {
           yul: true,
         },
       },
       evmVersion: "istanbul"
     },
+  },
+  contractSizer: {
+    alphaSort: true,
+    runOnCompile: true,
+    disambiguatePaths: false,
+    only: [":DiamondDao"],
   },
   paths: {
     artifacts: "./artifacts",
@@ -43,9 +52,8 @@ const config: HardhatUserConfig = {
     tests: "./test",
   },
   typechain: {
-    target: "ethers-v5",
+    target: "ethers-v6",
   },
 };
 
 export default config;
-
