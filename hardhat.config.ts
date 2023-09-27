@@ -5,6 +5,7 @@ import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@openzeppelin/hardhat-upgrades";
 import "hardhat-contract-sizer";
+import "solidity-coverage";
 
 
 let mnemonic = 'inspire school random normal account steel strike shove close album produce cube bounce memory before';
@@ -23,7 +24,7 @@ const config: HardhatUserConfig = {
       },
       allowUnlimitedContractSize: true,
       hardfork: "istanbul",
-      minGasPrice: 0
+      gasPrice: 0
     },
   },
   solidity: {

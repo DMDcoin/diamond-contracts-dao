@@ -4,7 +4,9 @@
   "description": "DMD DAO contracts",
   "scripts": {
     "compile": "npx hardhat compile --force",
-    "test": "npx hardhat test"
+    "test": "npx hardhat test",
+    "clean": "rm -rf artifacts/ cache/ coverage/ typechain/ typechain-types/ coverage.json",
+    "coverage": "npx hardhat coverage --config ./hardhat-coverage.config.ts --solcoverjs ./.solcover.js"
   },
   "repository": {
     "type": "git",
