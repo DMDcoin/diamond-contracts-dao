@@ -16,6 +16,12 @@ enum ProposalState {
   Executed
 };
 
+export function getRandomBigInt(): bigint {
+  let hex = "0x" + Buffer.from(ethers.randomBytes(16)).toString("hex");
+
+  return BigInt(hex);
+}
+
 describe("DiamondDao contract", function () {
   let users: HardhatEthersSigner[];
   let reinsertPot: HardhatEthersSigner;
@@ -48,6 +54,37 @@ describe("DiamondDao contract", function () {
     const dao = daoFactory.attach(await daoProxy.getAddress()) as DiamondDao;
 
     return { dao, mockValidatorSet };
+  }
+
+  async function createProposal(
+    dao: DiamondDao,
+    proposer: HardhatEthersSigner,
+    targets?: string[],
+    values?: bigint[],
+    calldatas?: string[],
+    description?: string
+  ) {
+    const _targets = targets ? targets : [users[1].address];
+    const _values = values ? values : [ethers.parseEther('100')];
+    const _calldatas = calldatas ? calldatas : [EmptyBytes];
+    const _description = description ? description : "fund user";
+
+    const proposalId = await dao.hashProposal(
+      _targets,
+      _values,
+      _calldatas,
+      ethers.keccak256(ethers.toUtf8Bytes(_description))
+    );
+
+    await dao.connect(proposer).propose(
+      _targets,
+      _values,
+      _calldatas,
+      _description,
+      { value: createProposalFee }
+    );
+
+    return { proposalId, targets, values, calldatas, description }
   }
 
   describe("initializer", async function () {
@@ -188,6 +225,42 @@ describe("DiamondDao contract", function () {
         .withArgs(proposalId);
     });
 
+    it("should revert propose if fee transfer failed", async function () {
+      const daoFactory = await ethers.getContractFactory("DiamondDao");
+      const mockFactory = await ethers.getContractFactory("MockValidatorSetHbbft");
+
+      const mockValidatorSet = await mockFactory.deploy();
+      await mockValidatorSet.waitForDeployment();
+
+      const daoProxy = await upgrades.deployProxy(daoFactory, [
+        await mockValidatorSet.getAddress(),
+        await mockValidatorSet.getAddress(),
+        createProposalFee
+      ], {
+        initializer: "initialize",
+      });
+
+      await daoProxy.waitForDeployment();
+
+      const dao = daoFactory.attach(await daoProxy.getAddress()) as DiamondDao;
+
+      const targets = [users[3].address];
+      const values = [ethers.parseEther("1")];
+      const calldatas = [EmptyBytes];
+      const description = "test";
+
+      await expect(
+        dao.propose(
+          targets,
+          values,
+          calldatas,
+          description,
+          { value: createProposalFee }
+        )
+      ).to.be.revertedWithCustomError(dao, "TransferFailed")
+        .withArgs(await dao.getAddress(), await mockValidatorSet.getAddress(), createProposalFee);
+    });
+
     it("should create proposal and transfer fee to reinsert pot", async function () {
       const { dao } = await loadFixture(deployFixture);
 
@@ -274,9 +347,88 @@ describe("DiamondDao contract", function () {
         description
       ]);
     });
+
+    it("should create proposal and update statistical data", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const statisticsBefore = await dao.statistic();
+
+      const proposer = users[1];
+      await createProposal(dao, proposer);
+
+      const statisticsAfter = await dao.statistic();
+      expect(statisticsAfter.total).to.equal(statisticsBefore.total + 1n);
+    });
   });
 
-  describe("cancel", async function () { });
+  describe("cancel", async function () {
+    it("should revert cancel for non-existing proposal", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const nonExistingProposalId = getRandomBigInt();
+
+      await expect(
+        dao.cancel(nonExistingProposalId, "test")
+      ).to.be.revertedWithCustomError(dao, "ProposalNotExist")
+        .withArgs(nonExistingProposalId);
+    });
+
+    it("should revert cancel not by proposal creator", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposer = users[1];
+      const caller = users[2];
+
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await expect(
+        dao.connect(caller).cancel(proposalId, "test")
+      ).to.be.revertedWithCustomError(dao, "OnlyProposer");
+    });
+
+    it("should cancel proposal and emit event", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposer = users[1];
+      const reason = "proposal-cancel-reason";
+
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await expect(
+        dao.connect(proposer).cancel(proposalId, reason)
+      ).to.emit(dao, "ProposalCanceled")
+        .withArgs(proposer.address, proposalId, reason);
+    });
+
+    it("should cancel proposal and change its status to canceled", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposer = users[1];
+      const { proposalId } = await createProposal(dao, proposer);
+
+      let proposalData = await dao.getProposal(proposalId);
+      expect(proposalData.state).to.be.equal(ProposalState.Created);
+
+      expect(await dao.connect(proposer).cancel(proposalId, "reason"));
+
+      proposalData = await dao.getProposal(proposalId);
+      expect(proposalData.state).to.be.equal(ProposalState.Canceled);
+    });
+
+    it("should cancel proposal and update statistics", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposer = users[1];
+      const { proposalId } = await createProposal(dao, proposer);
+
+      const statisticsBefore = await dao.statistic();
+
+      expect(await dao.connect(proposer).cancel(proposalId, "reason"));
+
+      const statisticsAfter = await dao.statistic();
+      expect(statisticsAfter.canceled).to.be.equal(statisticsBefore.canceled + 1n);
+    });
+  });
 
   describe("vote", async function () { });
 

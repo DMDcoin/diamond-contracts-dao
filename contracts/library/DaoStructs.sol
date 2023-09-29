@@ -7,7 +7,6 @@ enum ProposalState {
     Canceled,
     Accepted,
     Declined,
-    Expired,
     Executed
 }
 
@@ -15,6 +14,17 @@ enum Vote {
     Abstain,
     No,
     Yes
+}
+
+enum Phase {
+    Proposal,
+    Voting
+}
+
+struct DaoPhase {
+    uint64 start;
+    uint64 end;
+    Phase phase;
 }
 
 struct VoteRecord {

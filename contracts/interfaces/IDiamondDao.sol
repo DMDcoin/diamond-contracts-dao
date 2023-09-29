@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.17;
 
-import {Proposal, ProposalState, Vote} from "../library/DaoStructs.sol";
+import { Phase, Proposal, ProposalState, Vote } from "../library/DaoStructs.sol";
 
 interface IDiamondDao {
     event ProposalCreated(
@@ -13,19 +13,11 @@ interface IDiamondDao {
         string description
     );
 
-    event ProposalCanceled(
-        address indexed proposer,
-        uint256 indexed proposalId,
-        string reason
-    );
+    event ProposalCanceled(address indexed proposer, uint256 indexed proposalId, string reason);
 
     event ProposalExecuted(address indexed caller, uint256 indexed proposalId);
 
-    event SubmitVote(
-        address indexed voter,
-        uint256 indexed proposalId,
-        Vote vote
-    );
+    event SubmitVote(address indexed voter, uint256 indexed proposalId, Vote vote);
 
     event SubmitVoteWithReason(
         address indexed voter,
@@ -34,8 +26,12 @@ interface IDiamondDao {
         string reason
     );
 
+    event SwitchDaoPhase(Phase phase, uint256 start, uint256 end);
+
     error InsufficientFunds();
     error InvalidArgument();
+    error InvalidStartTimestamp();
+    error UnavailableInCurrentPhase(Phase phase);
     error OnlyProposer();
     error OnlyValidators(address caller);
     error ProposalAlreadyExist(uint256 proposalId);
@@ -54,11 +50,7 @@ interface IDiamondDao {
 
     function vote(uint256 proposalId, Vote _vote) external;
 
-    function voteWithReason(
-        uint256 proposalId,
-        Vote _vote,
-        string calldata reason
-    ) external;
+    function voteWithReason(uint256 proposalId, Vote _vote, string calldata reason) external;
 
     function finalize(uint256 proposalId) external;
 
@@ -66,9 +58,7 @@ interface IDiamondDao {
 
     function proposalExists(uint256 proposalId) external view returns (bool);
 
-    function getProposal(
-        uint256 proposalId
-    ) external view returns (Proposal memory);
+    function getProposal(uint256 proposalId) external view returns (Proposal memory);
 
     function countVotes(uint256 proposalId) external;
 
