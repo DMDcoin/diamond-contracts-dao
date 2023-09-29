@@ -28,10 +28,18 @@ struct DaoPhase {
 }
 
 struct VoteRecord {
-    address voter;
     uint64 timestamp;
     Vote vote;
     string reason;
+}
+
+struct VotingResult {
+    uint64 countAbstain;
+    uint64 countYes;
+    uint64 countNo;
+    uint256 stakeAbstain;
+    uint256 stakeYes;
+    uint256 stakeNo;
 }
 
 struct Proposal {

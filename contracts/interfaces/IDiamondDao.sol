@@ -17,6 +17,8 @@ interface IDiamondDao {
 
     event ProposalExecuted(address indexed caller, uint256 indexed proposalId);
 
+    event VotingFinalized(address indexed caller, uint256 indexed proposalId, bool accepted);
+
     event SubmitVote(address indexed voter, uint256 indexed proposalId, Vote vote);
 
     event SubmitVoteWithReason(
@@ -59,8 +61,6 @@ interface IDiamondDao {
     function proposalExists(uint256 proposalId) external view returns (bool);
 
     function getProposal(uint256 proposalId) external view returns (Proposal memory);
-
-    function countVotes(uint256 proposalId) external;
 
     function hashProposal(
         address[] memory targets,

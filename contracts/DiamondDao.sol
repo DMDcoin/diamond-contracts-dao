@@ -7,6 +7,8 @@ import { EnumerableSetUpgradeable } from "@openzeppelin/contracts-upgradeable/ut
 
 import { IDiamondDao } from "./interfaces/IDiamondDao.sol";
 import { IValidatorSetHbbft } from "./interfaces/IValidatorSetHbbft.sol";
+import { IStakingHbbft } from "./interfaces/IStakingHbbft.sol";
+
 import {
     DaoPhase,
     Phase,
@@ -14,7 +16,8 @@ import {
     ProposalState,
     ProposalStatistic,
     Vote,
-    VoteRecord
+    VoteRecord,
+    VotingResult
 } from "./library/DaoStructs.sol"; // prettier-ignore
 
 // struct DaoPhase {
@@ -34,13 +37,16 @@ contract DiamondDao is IDiamondDao, Initializable {
 
     address public reinsertPot;
     uint256 public createProposalFee;
+
     IValidatorSetHbbft public validatorSet;
+    IStakingHbbft public stakingHbbft;
 
     DaoPhase public daoPhase;
     ProposalStatistic public statistic;
 
     mapping(uint256 => Proposal) public proposals;
     mapping(uint256 => mapping(address => VoteRecord)) public votes;
+    mapping(uint256 => VotingResult) public results;
     mapping(uint256 => EnumerableSetUpgradeable.AddressSet) private _proposalVoters;
 
     modifier exists(uint256 proposalId) {
@@ -72,11 +78,17 @@ contract DiamondDao is IDiamondDao, Initializable {
 
     function initialize(
         address _validatorSet,
+        address _stakingHbbft,
         address _reinsertPot,
         uint256 _createProposalFee,
         uint64 _startTimestamp
     ) external initializer {
-        if (_validatorSet == address(0) || _reinsertPot == address(0) || _createProposalFee == 0) {
+        if (
+            _validatorSet == address(0) ||
+            _reinsertPot == address(0) ||
+            _stakingHbbft == address(0) ||
+            _createProposalFee == 0
+        ) {
             revert InvalidArgument();
         }
 
@@ -85,6 +97,7 @@ contract DiamondDao is IDiamondDao, Initializable {
         }
 
         validatorSet = IValidatorSetHbbft(_validatorSet);
+        stakingHbbft = IStakingHbbft(_stakingHbbft);
         reinsertPot = _reinsertPot;
         createProposalFee = _createProposalFee;
 
@@ -96,10 +109,12 @@ contract DiamondDao is IDiamondDao, Initializable {
             return;
         }
 
-        Phase current = daoPhase.phase;
         uint64 newPhaseStart = daoPhase.end + 1;
 
-        _switchPhase(current == Phase.Proposal ? Phase.Voting : Phase.Proposal, newPhaseStart);
+        _switchPhase(
+            daoPhase.phase == Phase.Proposal ? Phase.Voting : Phase.Proposal,
+            newPhaseStart
+        );
 
         emit SwitchDaoPhase(daoPhase.phase, daoPhase.start, daoPhase.end);
     }
@@ -146,7 +161,7 @@ contract DiamondDao is IDiamondDao, Initializable {
 
         statistic.total += 1;
 
-        _transferNative(reinsertPot, msg.value);
+        _transfer(reinsertPot, msg.value);
 
         emit ProposalCreated(proposer, proposalId, targets, values, calldatas, description);
     }
@@ -193,13 +208,17 @@ contract DiamondDao is IDiamondDao, Initializable {
     }
 
     function finalize(uint256 proposalId) external exists(proposalId) {
-        bool accepted = true;
+        VotingResult storage result = _countVotes(proposalId);
+
+        bool accepted = _quorumReached(result);
 
         if (accepted) {
             statistic.accepted += 1;
         } else {
             statistic.declined += 1;
         }
+
+        emit VotingFinalized(msg.sender, proposalId, accepted);
     }
 
     function execute(uint256 proposalId) external exists(proposalId) {
@@ -218,11 +237,9 @@ contract DiamondDao is IDiamondDao, Initializable {
         return _proposalVoters[proposalId].length();
     }
 
-    function getProposalVoters(uint256 proposalId) external view returns (address[] memory) {
+    function getProposalVoters(uint256 proposalId) public view returns (address[] memory) {
         return _proposalVoters[proposalId].values();
     }
-
-    function countVotes(uint256 proposalId) public {}
 
     function proposalExists(uint256 proposalId) public view returns (bool) {
         return proposals[proposalId].proposer != address(0);
@@ -241,6 +258,39 @@ contract DiamondDao is IDiamondDao, Initializable {
         return uint256(keccak256(abi.encode(targets, values, calldatas, descriptionHash)));
     }
 
+    function _countVotes(uint256 proposalId) private returns (VotingResult storage) {
+        VotingResult storage result = results[proposalId];
+
+        address[] memory voters = getProposalVoters(proposalId);
+
+        for (uint256 i = 0; i < voters.length; ++i) {
+            address voter = voters[i];
+            uint256 stakeAmount = stakingHbbft.stakeAmountTotal(voter);
+
+            Vote _vote = votes[proposalId][voter].vote;
+
+            if (_vote == Vote.Yes) {
+                result.countYes += 1;
+                result.stakeYes += stakeAmount;
+            } else if (_vote == Vote.No) {
+                result.countNo += 1;
+                result.stakeNo += stakeAmount;
+            } else {
+                result.countAbstain += 1;
+                result.stakeAbstain += stakeAmount;
+            }
+        }
+
+        return result;
+    }
+
+    function _quorumReached(VotingResult storage result) private view returns(bool) {
+        uint256 totalVotedStake = result.stakeYes + result.stakeNo + result.stakeAbstain;
+        uint256 acceptanceThreshold = (totalVotedStake * 2) / 3;
+
+        return result.stakeYes >= acceptanceThreshold;
+    }
+
     function _submitVote(
         address voter,
         uint256 proposalId,
@@ -251,7 +301,6 @@ contract DiamondDao is IDiamondDao, Initializable {
 
         _proposalVoters[proposalId].add(voter);
         votes[proposalId][voter] = VoteRecord({
-            voter: voter,
             timestamp: uint64(block.timestamp),
             vote: _vote,
             reason: reason
@@ -277,7 +326,7 @@ contract DiamondDao is IDiamondDao, Initializable {
         daoPhase.phase = phase;
     }
 
-    function _transferNative(address recipient, uint256 amount) private {
+    function _transfer(address recipient, uint256 amount) private {
         // solhint-disable-next-line avoid-low-level-calls
         (bool success, ) = recipient.call{ value: amount }("");
         if (!success) {
@@ -299,9 +348,4 @@ contract DiamondDao is IDiamondDao, Initializable {
         return
             miningAddress != address(0) && validatorSet.validatorAvailableSince(miningAddress) != 0;
     }
-
-    /// this list would go on forever,
-    /// bUt all usual ballots like TransferErc20, TransferERC721
-    /// are already solved in implementations of (gnosis) global safe.
-    /// here we could use multisend.
 }
