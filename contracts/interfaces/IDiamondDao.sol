@@ -33,12 +33,13 @@ interface IDiamondDao {
     error InsufficientFunds();
     error InvalidArgument();
     error InvalidStartTimestamp();
-    error UnavailableInCurrentPhase(Phase phase);
+    error NewProposalsLimitExceeded();
     error OnlyProposer();
     error OnlyValidators(address caller);
     error ProposalAlreadyExist(uint256 proposalId);
     error ProposalNotExist(uint256 proposalId);
     error TransferFailed(address from, address to, uint256 amount);
+    error UnavailableInCurrentPhase(Phase phase);
     error UnexpectedProposalState(uint256 proposalId, ProposalState state);
 
     function propose(

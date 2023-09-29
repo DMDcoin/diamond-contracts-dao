@@ -3,8 +3,9 @@ pragma solidity =0.8.17;
 
 enum ProposalState {
     Created,
-    Active,
     Canceled,
+    Active,
+    VotingFinished,
     Accepted,
     Declined,
     Executed

@@ -33,6 +33,8 @@ import {
 contract DiamondDao is IDiamondDao, Initializable {
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
 
+    /// @notice To make sure we don't exceed the gas limit updating status of proposals
+    uint256 public constant MAX_NEW_PROPOSALS = 100;
     uint64 public constant DAO_PHASE_DURATION = 14 days;
 
     address public reinsertPot;
@@ -40,9 +42,11 @@ contract DiamondDao is IDiamondDao, Initializable {
 
     IValidatorSetHbbft public validatorSet;
     IStakingHbbft public stakingHbbft;
+    ProposalStatistic public statistic;
 
     DaoPhase public daoPhase;
-    ProposalStatistic public statistic;
+
+    uint256[] public currentPhaseProposals;
 
     mapping(uint256 => Proposal) public proposals;
     mapping(uint256 => mapping(address => VoteRecord)) public votes;
@@ -137,6 +141,10 @@ contract DiamondDao is IDiamondDao, Initializable {
             revert InsufficientFunds();
         }
 
+        if (currentPhaseProposals.length > MAX_NEW_PROPOSALS) {
+            revert NewProposalsLimitExceeded();
+        }
+
         uint256 proposalId = hashProposal(
             targets,
             values,
@@ -159,6 +167,7 @@ contract DiamondDao is IDiamondDao, Initializable {
         proposal.calldatas = calldatas;
         proposal.description = description;
 
+        currentPhaseProposals.push(proposalId);
         statistic.total += 1;
 
         _transfer(reinsertPot, msg.value);
@@ -189,7 +198,6 @@ contract DiamondDao is IDiamondDao, Initializable {
         Vote _vote
     ) external exists(proposalId) onlyPhase(Phase.Voting) onlyValidator {
         address voter = msg.sender;
-
         _submitVote(voter, proposalId, _vote, "");
 
         emit SubmitVote(voter, proposalId, _vote);
@@ -201,16 +209,20 @@ contract DiamondDao is IDiamondDao, Initializable {
         string calldata reason
     ) external exists(proposalId) onlyPhase(Phase.Voting) onlyValidator {
         address voter = msg.sender;
-
         _submitVote(voter, proposalId, _vote, reason);
 
         emit SubmitVoteWithReason(voter, proposalId, _vote, reason);
     }
 
-    function finalize(uint256 proposalId) external exists(proposalId) {
+    function finalize(uint256 proposalId) external exists(proposalId) onlyPhase(Phase.Proposal) {
+        _requireState(proposalId, ProposalState.VotingFinished);
+
         VotingResult storage result = _countVotes(proposalId);
+        Proposal storage proposal = proposals[proposalId];
 
         bool accepted = _quorumReached(result);
+
+        proposal.state = accepted ? ProposalState.Accepted : ProposalState.Declined;
 
         if (accepted) {
             statistic.accepted += 1;
@@ -284,7 +296,7 @@ contract DiamondDao is IDiamondDao, Initializable {
         return result;
     }
 
-    function _quorumReached(VotingResult storage result) private view returns(bool) {
+    function _quorumReached(VotingResult storage result) private view returns (bool) {
         uint256 totalVotedStake = result.stakeYes + result.stakeNo + result.stakeAbstain;
         uint256 acceptanceThreshold = (totalVotedStake * 2) / 3;
 
@@ -324,6 +336,20 @@ contract DiamondDao is IDiamondDao, Initializable {
         daoPhase.start = startTimestamp;
         daoPhase.end = startTimestamp + DAO_PHASE_DURATION;
         daoPhase.phase = phase;
+
+        ProposalState stateToSet = phase == Phase.Voting
+            ? ProposalState.Active
+            : ProposalState.VotingFinished;
+
+        for (uint256 i = 0; i < currentPhaseProposals.length; ++i) {
+            uint256 proposalId = currentPhaseProposals[i];
+
+            proposals[proposalId].state = stateToSet;
+        }
+
+        if (phase == Phase.Proposal) {
+            delete currentPhaseProposals;
+        }
     }
 
     function _transfer(address recipient, uint256 amount) private {
