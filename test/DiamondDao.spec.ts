@@ -1,18 +1,19 @@
 import { ethers, upgrades } from "hardhat";
 import { expect } from "chai";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
+import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
+
 import { DiamondDao } from "../typechain-types";
 
 const EmptyBytes = ethers.hexlify(new Uint8Array());
 
 enum ProposalState {
   Created,
-  Active,
   Canceled,
+  Active,
+  VotingFinished,
   Accepted,
   Declined,
-  Expired,
   Executed
 };
 
@@ -37,14 +38,22 @@ describe("DiamondDao contract", function () {
   async function deployFixture() {
     const daoFactory = await ethers.getContractFactory("DiamondDao");
     const mockFactory = await ethers.getContractFactory("MockValidatorSetHbbft");
+    const stakingFactory = await ethers.getContractFactory("MockStakingHbbft");
 
     const mockValidatorSet = await mockFactory.deploy();
     await mockValidatorSet.waitForDeployment();
 
+    const mockStaking = await stakingFactory.deploy();
+    await mockStaking.waitForDeployment();
+
+    const startTime = await time.latest();
+
     const daoProxy = await upgrades.deployProxy(daoFactory, [
       await mockValidatorSet.getAddress(),
+      await mockStaking.getAddress(),
       reinsertPot.address,
-      createProposalFee
+      createProposalFee,
+      startTime + 1
     ], {
       initializer: "initialize",
     });
@@ -53,7 +62,7 @@ describe("DiamondDao contract", function () {
 
     const dao = daoFactory.attach(await daoProxy.getAddress()) as DiamondDao;
 
-    return { dao, mockValidatorSet };
+    return { dao, mockValidatorSet, mockStaking };
   }
 
   async function createProposal(
@@ -90,12 +99,32 @@ describe("DiamondDao contract", function () {
   describe("initializer", async function () {
     it("should not deploy contract with invalid ValidatorSet address", async function () {
       const daoFactory = await ethers.getContractFactory("DiamondDao");
+      const startTime = await time.latest();
 
       await expect(
         upgrades.deployProxy(daoFactory, [
           ethers.ZeroAddress,
-          reinsertPot.address,
-          createProposalFee
+          users[1].address,
+          users[2].address,
+          createProposalFee,
+          startTime + 1
+        ], {
+          initializer: "initialize",
+        })
+      ).to.be.revertedWithCustomError(daoFactory, "InvalidArgument");
+    });
+
+    it("should not deploy contract with invalid StakingHbbft address", async function () {
+      const daoFactory = await ethers.getContractFactory("DiamondDao");
+      const startTime = await time.latest();
+
+      await expect(
+        upgrades.deployProxy(daoFactory, [
+          users[1].address,
+          ethers.ZeroAddress,
+          users[2].address,
+          createProposalFee,
+          startTime + 1
         ], {
           initializer: "initialize",
         })
@@ -104,12 +133,15 @@ describe("DiamondDao contract", function () {
 
     it("should not deploy contract with invalid reinsert pot address", async function () {
       const daoFactory = await ethers.getContractFactory("DiamondDao");
+      const startTime = await time.latest();
 
       await expect(
         upgrades.deployProxy(daoFactory, [
           users[1].address,
+          users[2].address,
           ethers.ZeroAddress,
-          createProposalFee
+          createProposalFee,
+          startTime + 1
         ], {
           initializer: "initialize",
         })
@@ -118,25 +150,48 @@ describe("DiamondDao contract", function () {
 
     it("should not deploy contract with zero create proposal fee address", async function () {
       const daoFactory = await ethers.getContractFactory("DiamondDao");
+      const startTime = await time.latest();
 
       await expect(
         upgrades.deployProxy(daoFactory, [
           users[1].address,
           users[2].address,
-          0n
+          users[3].address,
+          0n,
+          startTime + 1
         ], {
           initializer: "initialize",
         })
       ).to.be.revertedWithCustomError(daoFactory, "InvalidArgument");
     });
 
+    it("should not deploy contract with invalid start timestamp", async function () {
+      const daoFactory = await ethers.getContractFactory("DiamondDao");
+      const startTime = await time.latest();
+
+      await expect(
+        upgrades.deployProxy(daoFactory, [
+          users[1].address,
+          users[2].address,
+          users[3].address,
+          createProposalFee,
+          startTime - 10
+        ], {
+          initializer: "initialize",
+        })
+      ).to.be.revertedWithCustomError(daoFactory, "InvalidStartTimestamp");
+    });
+
     it("should not allow reinitialization", async function () {
       const daoFactory = await ethers.getContractFactory("DiamondDao");
+      const startTime = await time.latest();
 
       const dao = await upgrades.deployProxy(daoFactory, [
         users[1].address,
         users[2].address,
-        createProposalFee
+        users[3].address,
+        createProposalFee,
+        startTime + 1
       ], {
         initializer: "initialize",
       });
@@ -147,7 +202,9 @@ describe("DiamondDao contract", function () {
         dao.initialize(
           users[1].address,
           users[2].address,
-          createProposalFee
+          users[3].address,
+          createProposalFee,
+          startTime + 1
         )
       ).to.be.revertedWith("Initializable: contract is already initialized");
     });
@@ -232,10 +289,14 @@ describe("DiamondDao contract", function () {
       const mockValidatorSet = await mockFactory.deploy();
       await mockValidatorSet.waitForDeployment();
 
+      const startTime = await time.latest();
+
       const daoProxy = await upgrades.deployProxy(daoFactory, [
         await mockValidatorSet.getAddress(),
         await mockValidatorSet.getAddress(),
-        createProposalFee
+        await mockValidatorSet.getAddress(),
+        createProposalFee,
+        startTime + 1
       ], {
         initializer: "initialize",
       });

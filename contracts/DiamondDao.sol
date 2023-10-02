@@ -20,12 +20,6 @@ import {
     VotingResult
 } from "./library/DaoStructs.sol"; // prettier-ignore
 
-// struct DaoPhase {
-//     uint64 start;
-//     uint64 end;
-//     Phase phase;
-// }
-
 /// Diamond DAO central point of operation.
 /// - Manages the DAO funds.
 /// - Is able to upgrade all diamond-contracts-core contracts, including itself.
@@ -49,8 +43,8 @@ contract DiamondDao is IDiamondDao, Initializable {
     uint256[] public currentPhaseProposals;
 
     mapping(uint256 => Proposal) public proposals;
-    mapping(uint256 => mapping(address => VoteRecord)) public votes;
     mapping(uint256 => VotingResult) public results;
+    mapping(uint256 => mapping(address => VoteRecord)) public votes;
     mapping(uint256 => EnumerableSetUpgradeable.AddressSet) private _proposalVoters;
 
     modifier exists(uint256 proposalId) {
@@ -60,9 +54,9 @@ contract DiamondDao is IDiamondDao, Initializable {
         _;
     }
 
-    modifier onlyValidator() {
-        if (!_isValidator(msg.sender)) {
-            revert OnlyValidators(msg.sender);
+    modifier onlyGovernance() {
+        if (msg.sender != address(this)) {
+            revert OnlyGovernance();
         }
         _;
     }
@@ -70,6 +64,13 @@ contract DiamondDao is IDiamondDao, Initializable {
     modifier onlyPhase(Phase phase) {
         if (daoPhase.phase != phase) {
             revert UnavailableInCurrentPhase(daoPhase.phase);
+        }
+        _;
+    }
+
+    modifier onlyValidator() {
+        if (!_isValidator(msg.sender)) {
+            revert OnlyValidators(msg.sender);
         }
         _;
     }
@@ -105,7 +106,19 @@ contract DiamondDao is IDiamondDao, Initializable {
         reinsertPot = _reinsertPot;
         createProposalFee = _createProposalFee;
 
-        _switchPhase(Phase.Proposal, _startTimestamp);
+        daoPhase.start = _startTimestamp;
+        daoPhase.end = _startTimestamp + DAO_PHASE_DURATION;
+        daoPhase.phase = Phase.Proposal;
+    }
+
+    function setCreateProposalFee(uint256 _fee) external onlyGovernance {
+        if (_fee == 0) {
+            revert InvalidArgument();
+        }
+
+        createProposalFee = _fee;
+
+        emit SetCreateProposalFee(_fee);
     }
 
     function switchPhase() public {
@@ -115,10 +128,25 @@ contract DiamondDao is IDiamondDao, Initializable {
 
         uint64 newPhaseStart = daoPhase.end + 1;
 
-        _switchPhase(
-            daoPhase.phase == Phase.Proposal ? Phase.Voting : Phase.Proposal,
-            newPhaseStart
-        );
+        Phase newPhase = daoPhase.phase == Phase.Proposal ? Phase.Voting : Phase.Proposal;
+
+        daoPhase.start = newPhaseStart;
+        daoPhase.end = newPhaseStart + DAO_PHASE_DURATION;
+        daoPhase.phase = newPhase;
+
+        ProposalState stateToSet = newPhase == Phase.Voting
+            ? ProposalState.Active
+            : ProposalState.VotingFinished;
+
+        for (uint256 i = 0; i < currentPhaseProposals.length; ++i) {
+            uint256 proposalId = currentPhaseProposals[i];
+
+            proposals[proposalId].state = stateToSet;
+        }
+
+        if (newPhase == Phase.Proposal) {
+            delete currentPhaseProposals;
+        }
 
         emit SwitchDaoPhase(daoPhase.phase, daoPhase.start, daoPhase.end);
     }
@@ -198,6 +226,8 @@ contract DiamondDao is IDiamondDao, Initializable {
         Vote _vote
     ) external exists(proposalId) onlyPhase(Phase.Voting) onlyValidator {
         address voter = msg.sender;
+
+        // Proposal must have Active state, checked in _submitVote
         _submitVote(voter, proposalId, _vote, "");
 
         emit SubmitVote(voter, proposalId, _vote);
@@ -209,6 +239,8 @@ contract DiamondDao is IDiamondDao, Initializable {
         string calldata reason
     ) external exists(proposalId) onlyPhase(Phase.Voting) onlyValidator {
         address voter = msg.sender;
+
+        // Proposal must have Active state, checked in _submitVote
         _submitVote(voter, proposalId, _vote, reason);
 
         emit SubmitVoteWithReason(voter, proposalId, _vote, reason);
@@ -329,26 +361,6 @@ contract DiamondDao is IDiamondDao, Initializable {
                 calldatas[i]
             );
             AddressUpgradeable.verifyCallResult(success, returndata, "low-level call failed");
-        }
-    }
-
-    function _switchPhase(Phase phase, uint64 startTimestamp) private {
-        daoPhase.start = startTimestamp;
-        daoPhase.end = startTimestamp + DAO_PHASE_DURATION;
-        daoPhase.phase = phase;
-
-        ProposalState stateToSet = phase == Phase.Voting
-            ? ProposalState.Active
-            : ProposalState.VotingFinished;
-
-        for (uint256 i = 0; i < currentPhaseProposals.length; ++i) {
-            uint256 proposalId = currentPhaseProposals[i];
-
-            proposals[proposalId].state = stateToSet;
-        }
-
-        if (phase == Phase.Proposal) {
-            delete currentPhaseProposals;
         }
     }
 

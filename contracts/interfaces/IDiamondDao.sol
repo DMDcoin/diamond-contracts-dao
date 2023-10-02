@@ -30,10 +30,13 @@ interface IDiamondDao {
 
     event SwitchDaoPhase(Phase phase, uint256 start, uint256 end);
 
+    event SetCreateProposalFee(uint256 fee);
+
     error InsufficientFunds();
     error InvalidArgument();
     error InvalidStartTimestamp();
     error NewProposalsLimitExceeded();
+    error OnlyGovernance();
     error OnlyProposer();
     error OnlyValidators(address caller);
     error ProposalAlreadyExist(uint256 proposalId);
