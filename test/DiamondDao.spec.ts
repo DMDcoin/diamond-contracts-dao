@@ -1,7 +1,7 @@
 import { ethers, upgrades } from "hardhat";
 import { expect } from "chai";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
+import { loadFixture, time, getStorageAt, setStorageAt } from "@nomicfoundation/hardhat-network-helpers";
 
 import { DiamondDao } from "../typechain-types";
 
@@ -16,6 +16,11 @@ enum ProposalState {
   Declined,
   Executed
 };
+
+enum DaoPhase {
+  Proposal,
+  Voting
+}
 
 export function getRandomBigInt(): bigint {
   let hex = "0x" + Buffer.from(ethers.randomBytes(16)).toString("hex");
@@ -68,10 +73,10 @@ describe("DiamondDao contract", function () {
   async function createProposal(
     dao: DiamondDao,
     proposer: HardhatEthersSigner,
+    description?: string,
     targets?: string[],
     values?: bigint[],
-    calldatas?: string[],
-    description?: string
+    calldatas?: string[]
   ) {
     const _targets = targets ? targets : [users[1].address];
     const _values = values ? values : [ethers.parseEther('100')];
@@ -210,6 +215,125 @@ describe("DiamondDao contract", function () {
     });
   });
 
+  describe("switchPhase", async function () {
+    it("should not switch DAO phase before its end", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      const daoPhaseBefore = await dao.daoPhase();
+
+      await expect(dao.switchPhase()).to.not.emit(dao, "SwitchDaoPhase");
+
+      const daoPhaseAfter = await dao.daoPhase();
+
+      expect(Object.values(daoPhaseBefore)).to.deep.equal(Object.values(daoPhaseAfter));
+    });
+
+    it("should switch DAO phase and emit event", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      const daoPhaseBefore = await dao.daoPhase();
+
+      await time.increaseTo(daoPhaseBefore.end);
+
+      const timestamp = await time.latest();
+      const daoPhaseDuration = await dao.DAO_PHASE_DURATION();
+
+      const expectedStartTimestamp = BigInt(timestamp + 1);
+      const expectedEndTimestamp = BigInt(expectedStartTimestamp) + daoPhaseDuration;
+
+      await expect(
+        dao.switchPhase()
+      ).to.emit(dao, "SwitchDaoPhase")
+        .withArgs(DaoPhase.Voting, expectedStartTimestamp, expectedEndTimestamp);
+
+      const daoPhase = await dao.daoPhase();
+
+      expect(daoPhase.phase).to.equal(DaoPhase.Voting);
+      expect(daoPhase.start).to.equal(expectedStartTimestamp);
+      expect(daoPhase.end).to.equal(expectedEndTimestamp);
+    });
+
+    it("should switch DAO phase from Proposal to Voting", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      const daoPhaseBefore = await dao.daoPhase();
+
+      await time.increaseTo(daoPhaseBefore.end);
+
+      await expect(
+        dao.switchPhase()
+      ).to.emit(dao, "SwitchDaoPhase");
+
+      const daoPhase = await dao.daoPhase();
+
+      expect(daoPhase.phase).to.equal(DaoPhase.Voting);
+    });
+
+    it("should switch DAO phase to Voting and set Active proposal state", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposals = [];
+
+      proposals.push(await createProposal(dao, users[2], users[2].address));
+      proposals.push(await createProposal(dao, users[3], users[3].address));
+      proposals.push(await createProposal(dao, users[4], users[4].address));
+
+      const currentProposals: bigint[] = await dao.getCurrentPhaseProposals();
+
+      expect(currentProposals.length).to.equal(proposals.length);
+      for (const proposal of proposals) {
+        expect((await dao.getProposal(proposal.proposalId)).state).to.equal(ProposalState.Created);
+        expect(currentProposals.includes(proposal.proposalId));
+      }
+
+      const daoPhaseBefore = await dao.daoPhase();
+
+      await time.increaseTo(daoPhaseBefore.end);
+
+      await expect(
+        dao.switchPhase()
+      ).to.emit(dao, "SwitchDaoPhase");
+
+      for (const proposal of proposals) {
+        expect((await dao.getProposal(proposal.proposalId)).state).to.equal(ProposalState.Active);
+      }
+    });
+
+    it("should switch DAO phase from Voting to Proposal and clear current phase proposals", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      let daoPhase = await dao.daoPhase();
+
+      const proposals = [];
+
+      proposals.push(await createProposal(dao, users[2], users[2].address));
+      proposals.push(await createProposal(dao, users[3], users[3].address));
+      proposals.push(await createProposal(dao, users[4], users[4].address));
+
+      for (const proposal of proposals) {
+        expect((await dao.getProposal(proposal.proposalId)).state).to.equal(ProposalState.Created);
+      }
+
+      await time.increaseTo(daoPhase.end);
+      await expect(
+        dao.switchPhase()
+      ).to.emit(dao, "SwitchDaoPhase");
+
+      daoPhase = await dao.daoPhase();
+
+      await time.increaseTo(daoPhase.end);
+      await expect(
+        dao.switchPhase()
+      ).to.emit(dao, "SwitchDaoPhase");
+
+      daoPhase = await dao.daoPhase();
+
+      expect(daoPhase.phase).to.equal(DaoPhase.Proposal);
+
+      for (const proposal of proposals) {
+        expect((await dao.getProposal(proposal.proposalId)).state).to.equal(ProposalState.VotingFinished);
+      }
+
+      expect(await dao.getCurrentPhaseProposals()).to.be.empty;
+    });
+  });
+
   describe("propose", async function () {
     it("should revert propose with empty targets array", async function () {
       const { dao } = await loadFixture(deployFixture);
@@ -282,6 +406,26 @@ describe("DiamondDao contract", function () {
         .withArgs(proposalId);
     });
 
+    it("should revert propose on Voting phase", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      const phase = await dao.daoPhase();
+
+      await time.increaseTo(phase.end);
+
+      await expect(
+        dao.switchPhase()
+      ).to.emit(dao, "SwitchDaoPhase");
+
+      const targets = [users[3].address];
+      const values = [1n];
+      const calldatas = [EmptyBytes];
+
+      await expect(
+        dao.propose(targets, values, calldatas, "test", { value: createProposalFee })
+      ).to.be.revertedWithCustomError(dao, "UnavailableInCurrentPhase")
+        .withArgs(DaoPhase.Voting);
+    });
+
     it("should revert propose if fee transfer failed", async function () {
       const daoFactory = await ethers.getContractFactory("DiamondDao");
       const mockFactory = await ethers.getContractFactory("MockValidatorSetHbbft");
@@ -320,6 +464,24 @@ describe("DiamondDao contract", function () {
         )
       ).to.be.revertedWithCustomError(dao, "TransferFailed")
         .withArgs(await dao.getAddress(), await mockValidatorSet.getAddress(), createProposalFee);
+    });
+
+    it("should revert propose if limit was reached", async function() {
+      const { dao } = await loadFixture(deployFixture);
+
+      for (let i = 0; i < 100; ++i) {
+        expect(await createProposal(dao, users[1], `proposal ${i}`));
+      }
+
+      await expect(
+        dao.connect(users[2]).propose(
+          [users[3].address],
+          [ethers.parseEther('10')],
+          [EmptyBytes],
+          "should fail",
+          { value: createProposalFee }
+        )
+      ).to.be.revertedWithCustomError(dao, "NewProposalsLimitExceeded");
     });
 
     it("should create proposal and transfer fee to reinsert pot", async function () {
@@ -498,4 +660,15 @@ describe("DiamondDao contract", function () {
   describe("finalize", async function () { });
 
   describe("execute", async function () { });
+
+  describe("setCreateProposalFee", async function () {
+    it("should revert calling function by unauthorized account", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      const caller = users[4];
+
+      await expect(
+        dao.connect(caller).setCreateProposalFee(1n)
+      ).to.be.revertedWithCustomError(dao, "OnlyGovernance");
+    });
+  });
 });

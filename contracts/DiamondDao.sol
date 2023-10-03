@@ -169,7 +169,7 @@ contract DiamondDao is IDiamondDao, Initializable {
             revert InsufficientFunds();
         }
 
-        if (currentPhaseProposals.length > MAX_NEW_PROPOSALS) {
+        if (currentPhaseProposals.length >= MAX_NEW_PROPOSALS) {
             revert NewProposalsLimitExceeded();
         }
 
@@ -206,7 +206,7 @@ contract DiamondDao is IDiamondDao, Initializable {
     function cancel(
         uint256 proposalId,
         string calldata reason
-    ) external exists(proposalId) onlyPhase(Phase.Proposal) {
+    ) external exists(proposalId) {
         Proposal storage proposal = proposals[proposalId];
 
         if (msg.sender != proposal.proposer) {
@@ -246,7 +246,7 @@ contract DiamondDao is IDiamondDao, Initializable {
         emit SubmitVoteWithReason(voter, proposalId, _vote, reason);
     }
 
-    function finalize(uint256 proposalId) external exists(proposalId) onlyPhase(Phase.Proposal) {
+    function finalize(uint256 proposalId) external exists(proposalId) {
         _requireState(proposalId, ProposalState.VotingFinished);
 
         VotingResult storage result = _countVotes(proposalId);
@@ -275,6 +275,10 @@ contract DiamondDao is IDiamondDao, Initializable {
         _executeOperations(proposal.targets, proposal.values, proposal.calldatas);
 
         emit ProposalExecuted(msg.sender, proposalId);
+    }
+
+    function getCurrentPhaseProposals() external view returns (uint256[] memory) {
+        return currentPhaseProposals;
     }
 
     function getProposalVotersCount(uint256 proposalId) external view returns (uint256) {
