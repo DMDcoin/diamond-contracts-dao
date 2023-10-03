@@ -22,6 +22,12 @@ enum DaoPhase {
   Voting
 }
 
+enum Vote {
+  Abstain,
+  No,
+  Yes
+}
+
 export function getRandomBigInt(): bigint {
   let hex = "0x" + Buffer.from(ethers.randomBytes(16)).toString("hex");
 
@@ -99,6 +105,13 @@ describe("DiamondDao contract", function () {
     );
 
     return { proposalId, targets, values, calldatas, description }
+  }
+
+  async function swithPhase(dao: DiamondDao) {
+    const phase = await dao.daoPhase();
+    await time.increaseTo(phase.end + 1n);
+
+    await dao.switchPhase();
   }
 
   describe("initializer", async function () {
@@ -253,14 +266,8 @@ describe("DiamondDao contract", function () {
 
     it("should switch DAO phase from Proposal to Voting", async function () {
       const { dao } = await loadFixture(deployFixture);
-      const daoPhaseBefore = await dao.daoPhase();
 
-      await time.increaseTo(daoPhaseBefore.end);
-
-      await expect(
-        dao.switchPhase()
-      ).to.emit(dao, "SwitchDaoPhase");
-
+      await swithPhase(dao);
       const daoPhase = await dao.daoPhase();
 
       expect(daoPhase.phase).to.equal(DaoPhase.Voting);
@@ -283,13 +290,7 @@ describe("DiamondDao contract", function () {
         expect(currentProposals.includes(proposal.proposalId));
       }
 
-      const daoPhaseBefore = await dao.daoPhase();
-
-      await time.increaseTo(daoPhaseBefore.end);
-
-      await expect(
-        dao.switchPhase()
-      ).to.emit(dao, "SwitchDaoPhase");
+      await swithPhase(dao);
 
       for (const proposal of proposals) {
         expect((await dao.getProposal(proposal.proposalId)).state).to.equal(ProposalState.Active);
@@ -298,7 +299,6 @@ describe("DiamondDao contract", function () {
 
     it("should switch DAO phase from Voting to Proposal and clear current phase proposals", async function () {
       const { dao } = await loadFixture(deployFixture);
-      let daoPhase = await dao.daoPhase();
 
       const proposals = [];
 
@@ -310,19 +310,10 @@ describe("DiamondDao contract", function () {
         expect((await dao.getProposal(proposal.proposalId)).state).to.equal(ProposalState.Created);
       }
 
-      await time.increaseTo(daoPhase.end);
-      await expect(
-        dao.switchPhase()
-      ).to.emit(dao, "SwitchDaoPhase");
+      await swithPhase(dao);
+      await swithPhase(dao);
 
-      daoPhase = await dao.daoPhase();
-
-      await time.increaseTo(daoPhase.end);
-      await expect(
-        dao.switchPhase()
-      ).to.emit(dao, "SwitchDaoPhase");
-
-      daoPhase = await dao.daoPhase();
+      const daoPhase = await dao.daoPhase();
 
       expect(daoPhase.phase).to.equal(DaoPhase.Proposal);
 
@@ -408,13 +399,8 @@ describe("DiamondDao contract", function () {
 
     it("should revert propose on Voting phase", async function () {
       const { dao } = await loadFixture(deployFixture);
-      const phase = await dao.daoPhase();
 
-      await time.increaseTo(phase.end);
-
-      await expect(
-        dao.switchPhase()
-      ).to.emit(dao, "SwitchDaoPhase");
+      await swithPhase(dao);
 
       const targets = [users[3].address];
       const values = [1n];
@@ -466,7 +452,7 @@ describe("DiamondDao contract", function () {
         .withArgs(await dao.getAddress(), await mockValidatorSet.getAddress(), createProposalFee);
     });
 
-    it("should revert propose if limit was reached", async function() {
+    it("should revert propose if limit was reached", async function () {
       const { dao } = await loadFixture(deployFixture);
 
       for (let i = 0; i < 100; ++i) {
@@ -609,6 +595,20 @@ describe("DiamondDao contract", function () {
       ).to.be.revertedWithCustomError(dao, "OnlyProposer");
     });
 
+    it("should revert cancel of active proposal", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposer = users[1];
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(proposer).cancel(proposalId, "reason")
+      ).to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
+        .withArgs(proposalId, ProposalState.Active);
+    });
+
     it("should cancel proposal and emit event", async function () {
       const { dao } = await loadFixture(deployFixture);
 
@@ -653,9 +653,217 @@ describe("DiamondDao contract", function () {
     });
   });
 
-  describe("vote", async function () { });
+  describe("vote", async function () {
+    it("should revert vote for non-existing proposal", async function () {
+      const { dao } = await loadFixture(deployFixture);
 
-  describe("voteWithReason", async function () { });
+      const proposalId = getRandomBigInt();
+
+      await expect(
+        dao.vote(proposalId, Vote.Yes)
+      ).to.be.revertedWithCustomError(dao, "ProposalNotExist")
+        .withArgs(proposalId);
+    });
+
+    it("should revert vote on wrong phase", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      const proposer = users[10];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await expect(
+        dao.vote(proposalId, Vote.Yes)
+      ).to.be.revertedWithCustomError(dao, "UnavailableInCurrentPhase")
+        .withArgs(DaoPhase.Proposal);
+    });
+
+    it("should revert vote not by validator", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(voter).vote(proposalId, Vote.Yes)
+      ).to.be.revertedWithCustomError(dao, "OnlyValidators")
+        .withArgs(voter.address);
+    });
+
+    it("should submit vote by validator and emit event", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+      const vote = Vote.Yes;
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(voter).vote(proposalId, vote)
+      ).to.emit(dao, "SubmitVote")
+        .withArgs(voter.address, proposalId, vote);
+    });
+
+    it("should submit vote and add voter to set", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voters = users.slice(5, 10);
+
+      const vote = Vote.Yes;
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+      await swithPhase(dao);
+
+      for (const voter of voters) {
+        await mockValidatorSet.add(voter.address, voter.address, true);
+        expect(await dao.connect(voter).vote(proposalId, vote));
+      }
+
+      const votersAddressList = voters.map(x => x.address);
+
+      const savidVotersCount = await dao.getProposalVotersCount(proposalId);
+      const savedVotersList = await dao.getProposalVoters(proposalId);
+
+      expect(savidVotersCount).to.equal(savedVotersList.length);
+      expect(savidVotersCount).to.equal(BigInt(votersAddressList.length));
+
+      expect(savedVotersList).to.deep.equal(votersAddressList);
+    });
+
+    it("should submit vote and save its data", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+
+      const voter = users[11];
+      const vote = Vote.Yes;
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+      await swithPhase(dao);
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      expect(await dao.connect(voter).vote(proposalId, vote));
+
+      const voteTimestamp = await time.latest();
+      const savedVoteData = await dao.votes(proposalId, voter.address);
+
+      expect(Object.values(savedVoteData)).to.deep.equal([voteTimestamp, vote, ""]);
+    });
+  });
+
+  describe("voteWithReason", async function () {
+    it("should revert vote with reason for non-existing proposal", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposalId = getRandomBigInt();
+
+      await expect(
+        dao.voteWithReason(proposalId, Vote.Yes, "reason")
+      ).to.be.revertedWithCustomError(dao, "ProposalNotExist")
+        .withArgs(proposalId);
+    });
+
+    it("should revert vote with reason on wrong phase", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      const proposer = users[10];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await expect(
+        dao.voteWithReason(proposalId, Vote.Yes, "reason")
+      ).to.be.revertedWithCustomError(dao, "UnavailableInCurrentPhase")
+        .withArgs(DaoPhase.Proposal);
+    });
+
+    it("should revert vote with reason not by validator", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(voter).voteWithReason(proposalId, Vote.Yes, "reason")
+      ).to.be.revertedWithCustomError(dao, "OnlyValidators")
+        .withArgs(voter.address);
+    });
+
+    it("should submot vote with reason by validator and emit event", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+      const vote = Vote.Yes;
+      const reason = "vote reason"
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(voter).voteWithReason(proposalId, vote, reason)
+      ).to.emit(dao, "SubmitVoteWithReason")
+        .withArgs(voter.address, proposalId, vote, reason);
+    });
+
+    it("should submit vote with reason and add voter to set", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+
+      const voters = users.slice(5, 10);
+      const vote = Vote.Yes;
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+      await swithPhase(dao);
+
+      for (const voter of voters) {
+        await mockValidatorSet.add(voter.address, voter.address, true);
+        expect(await dao.connect(voter).voteWithReason(proposalId, vote, "reason"));
+      }
+
+      const votersAddressList = voters.map(x => x.address);
+
+      const savidVotersCount = await dao.getProposalVotersCount(proposalId);
+      const savedVotersList = await dao.getProposalVoters(proposalId);
+
+      expect(savidVotersCount).to.equal(savedVotersList.length);
+      expect(savidVotersCount).to.equal(BigInt(votersAddressList.length));
+
+      expect(savedVotersList).to.deep.equal(votersAddressList);
+    });
+
+    it("should submit vote with reason and save its data", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+
+      const voter = users[11];
+      const vote = Vote.Yes;
+      const reason = "vote reason"
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+      await swithPhase(dao);
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      expect(await dao.connect(voter).voteWithReason(proposalId, vote, reason));
+
+      const voteTimestamp = await time.latest();
+      const savedVoteData = await dao.votes(proposalId, voter.address);
+
+      expect(Object.values(savedVoteData)).to.deep.equal([voteTimestamp, vote, reason]);
+    });
+  });
 
   describe("finalize", async function () { });
 
