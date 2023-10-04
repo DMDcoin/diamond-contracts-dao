@@ -4,6 +4,7 @@ pragma solidity =0.8.17;
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { AddressUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import { EnumerableSetUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
+import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
 import { IDiamondDao } from "./interfaces/IDiamondDao.sol";
 import { IValidatorSetHbbft } from "./interfaces/IValidatorSetHbbft.sol";
@@ -24,7 +25,7 @@ import {
 /// - Manages the DAO funds.
 /// - Is able to upgrade all diamond-contracts-core contracts, including itself.
 /// - Is able to vote for chain settings.
-contract DiamondDao is IDiamondDao, Initializable {
+contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
 
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
@@ -101,6 +102,8 @@ contract DiamondDao is IDiamondDao, Initializable {
             revert InvalidStartTimestamp();
         }
 
+        __ReentrancyGuard_init();
+
         validatorSet = IValidatorSetHbbft(_validatorSet);
         stakingHbbft = IStakingHbbft(_stakingHbbft);
         reinsertPot = _reinsertPot;
@@ -173,12 +176,7 @@ contract DiamondDao is IDiamondDao, Initializable {
             revert NewProposalsLimitExceeded();
         }
 
-        uint256 proposalId = hashProposal(
-            targets,
-            values,
-            calldatas,
-            keccak256(bytes(description))
-        );
+        uint256 proposalId = hashProposal(targets, values, calldatas, description);
 
         if (proposalExists(proposalId)) {
             revert ProposalAlreadyExist(proposalId);
@@ -203,10 +201,7 @@ contract DiamondDao is IDiamondDao, Initializable {
         emit ProposalCreated(proposer, proposalId, targets, values, calldatas, description);
     }
 
-    function cancel(
-        uint256 proposalId,
-        string calldata reason
-    ) external exists(proposalId) {
+    function cancel(uint256 proposalId, string calldata reason) external exists(proposalId) {
         Proposal storage proposal = proposals[proposalId];
 
         if (msg.sender != proposal.proposer) {
@@ -265,7 +260,7 @@ contract DiamondDao is IDiamondDao, Initializable {
         emit VotingFinalized(msg.sender, proposalId, accepted);
     }
 
-    function execute(uint256 proposalId) external exists(proposalId) {
+    function execute(uint256 proposalId) external nonReentrant exists(proposalId) {
         _requireState(proposalId, ProposalState.Accepted);
 
         Proposal storage proposal = proposals[proposalId];
@@ -301,8 +296,10 @@ contract DiamondDao is IDiamondDao, Initializable {
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
-        bytes32 descriptionHash
+        string memory description
     ) public pure virtual returns (uint256) {
+        bytes32 descriptionHash = keccak256(bytes(description));
+
         return uint256(keccak256(abi.encode(targets, values, calldatas, descriptionHash)));
     }
 

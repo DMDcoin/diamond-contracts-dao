@@ -70,6 +70,6 @@ interface IDiamondDao {
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
-        bytes32 descriptionHash
+        string memory descriptionHash
     ) external pure returns (uint256);
 }

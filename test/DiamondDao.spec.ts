@@ -1,9 +1,9 @@
 import { ethers, upgrades } from "hardhat";
 import { expect } from "chai";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { loadFixture, time, getStorageAt, setStorageAt } from "@nomicfoundation/hardhat-network-helpers";
+import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 
-import { DiamondDao } from "../typechain-types";
+import { DiamondDao, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
 
 const EmptyBytes = ethers.hexlify(new Uint8Array());
 
@@ -93,7 +93,7 @@ describe("DiamondDao contract", function () {
       _targets,
       _values,
       _calldatas,
-      ethers.keccak256(ethers.toUtf8Bytes(_description))
+      _description
     );
 
     await dao.connect(proposer).propose(
@@ -112,6 +112,31 @@ describe("DiamondDao contract", function () {
     await time.increaseTo(phase.end + 1n);
 
     await dao.switchPhase();
+  }
+
+  async function addValidatorsStake(
+    validatorSet: MockValidatorSetHbbft,
+    staking: MockStakingHbbft,
+    validators: HardhatEthersSigner[],
+    stakeAmount?: bigint
+  ) {
+    const stake = stakeAmount ? stakeAmount : ethers.parseEther('10');
+
+    for (const validator of validators) {
+      await validatorSet.add(validator.address, validator.address, true);
+      await staking.setStake(validator.address, stake);
+    }
+  }
+
+  async function vote(
+    dao: DiamondDao,
+    proposalId: bigint,
+    voters: HardhatEthersSigner[],
+    vote: Vote
+  ) {
+    for (const voter of voters) {
+      await dao.connect(voter).vote(proposalId, vote);
+    }
   }
 
   describe("initializer", async function () {
@@ -386,7 +411,7 @@ describe("DiamondDao contract", function () {
         targets,
         values,
         calldatas,
-        ethers.keccak256(ethers.toUtf8Bytes(description))
+        description
       );
 
       expect(await dao.propose(targets, values, calldatas, description, { value: createProposalFee }));
@@ -502,7 +527,7 @@ describe("DiamondDao contract", function () {
         targets,
         values,
         calldatas,
-        ethers.keccak256(ethers.toUtf8Bytes(description))
+        description
       );
 
       await expect(
@@ -532,7 +557,7 @@ describe("DiamondDao contract", function () {
         targets,
         values,
         calldatas,
-        ethers.keccak256(ethers.toUtf8Bytes(description))
+        description
       );
 
       expect(await dao.connect(proposer).propose(
@@ -865,9 +890,168 @@ describe("DiamondDao contract", function () {
     });
   });
 
-  describe("finalize", async function () { });
+  describe("finalize", async function () {
+    it("should revert finalize of non-existing proposal", async function () {
+      const { dao } = await loadFixture(deployFixture);
 
-  describe("execute", async function () { });
+      const proposalId = getRandomBigInt();
+
+      await expect(
+        dao.finalize(proposalId)
+      ).to.be.revertedWithCustomError(dao, "ProposalNotExist")
+        .withArgs(proposalId);
+    });
+
+    it("should revert finalize of proposal with unexpected state", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposer = users[2];
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await expect(
+        dao.finalize(proposalId)
+      ).to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
+        .withArgs(proposalId, ProposalState.Created);
+    });
+
+    it("should finalize accepted proposal and emit event", async function () {
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const proposer = users[1];
+      const voters = users.slice(10, 25);
+
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+
+      await swithPhase(dao);
+
+      await vote(dao, proposalId, voters.slice(0, 10), Vote.Yes);
+      await vote(dao, proposalId, voters.slice(10, 12), Vote.Abstain);
+      await vote(dao, proposalId, voters.slice(12), Vote.No);
+
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(proposer).finalize(proposalId)
+      ).to.emit(dao, "VotingFinalized")
+        .withArgs(proposer.address, proposalId, true);
+
+      expect((await dao.getProposal(proposalId)).state).to.equal(ProposalState.Accepted);
+    });
+
+    it("should finalize accepted proposal and update statistics", async function () {
+      const voters = users.slice(10, 20);
+
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { proposalId } = await createProposal(dao, users[1]);
+
+      const statisticBefore = await dao.statistic();
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+
+      await swithPhase(dao);
+      await vote(dao, proposalId, voters, Vote.Yes);
+      await swithPhase(dao);
+
+      expect(await dao.finalize(proposalId));
+
+      const statisticsAfter = await dao.statistic();
+
+      expect(statisticsAfter.accepted).to.equal(statisticBefore.accepted + 1n);
+    });
+
+    it("should finalize declined proposal and emit event", async function () {
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const proposer = users[1];
+      const voters = users.slice(10, 25);
+
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+
+      await swithPhase(dao);
+
+      await vote(dao, proposalId, voters.slice(0, 10), Vote.No);
+      await vote(dao, proposalId, voters.slice(10), Vote.Yes);
+
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(proposer).finalize(proposalId)
+      ).to.emit(dao, "VotingFinalized")
+        .withArgs(proposer.address, proposalId, false);
+
+      expect((await dao.getProposal(proposalId)).state).to.equal(ProposalState.Declined);
+    });
+
+    it("should finalize declined proposal and update statistics", async function () {
+      const voters = users.slice(10, 20);
+
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { proposalId } = await createProposal(dao, users[1]);
+
+      const statisticBefore = await dao.statistic();
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+
+      await swithPhase(dao);
+      await vote(dao, proposalId, voters, Vote.No);
+      await swithPhase(dao);
+
+      expect(await dao.finalize(proposalId));
+
+      const statisticsAfter = await dao.statistic();
+
+      expect(statisticsAfter.declined).to.equal(statisticBefore.declined + 1n);
+    });
+  });
+
+  describe("execute", async function () {
+    it("should revert execute of non-existing proposal", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposalId = getRandomBigInt();
+
+      await expect(
+        dao.execute(proposalId)
+      ).to.be.revertedWithCustomError(dao, "ProposalNotExist")
+        .withArgs(proposalId);
+    });
+
+    it("should revert execute of proposal with unexpected state", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposer = users[2];
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await expect(
+        dao.execute(proposalId)
+      ).to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
+        .withArgs(proposalId, ProposalState.Created);
+    });
+
+    it("should revert execute of declined proposal", async function () {
+      const voters = users.slice(10, 25);
+
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { proposalId } = await createProposal(dao, users[1]);
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+
+      await swithPhase(dao);
+      await vote(dao, proposalId, voters, Vote.No);
+      await swithPhase(dao);
+
+      expect(await dao.finalize(proposalId));
+
+      await expect(
+        dao.execute(proposalId)
+      ).to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
+        .withArgs(proposalId, ProposalState.Declined);
+    });
+  });
 
   describe("setCreateProposalFee", async function () {
     it("should revert calling function by unauthorized account", async function () {
