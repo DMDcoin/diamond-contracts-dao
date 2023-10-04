@@ -1051,6 +1051,53 @@ describe("DiamondDao contract", function () {
       ).to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
         .withArgs(proposalId, ProposalState.Declined);
     });
+
+    it("should execute accepted proposal", async function () {
+      const voters = users.slice(10, 25);
+
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const proposer = users[4];
+      const userToFund = users[5];
+      const fundAmount = ethers.parseEther('151');
+
+      const { proposalId } = await createProposal(
+        dao,
+        users[1],
+        "fund user 5",
+        [userToFund.address],
+        [fundAmount],
+        [EmptyBytes]
+      );
+
+      await proposer.sendTransaction({
+        to: await dao.getAddress(),
+        value: fundAmount
+      });
+
+      expect(await dao.governancePot()).to.equal(fundAmount);
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+
+      await swithPhase(dao);
+      await vote(dao, proposalId, voters, Vote.Yes);
+      await swithPhase(dao);
+
+      expect(await dao.finalize(proposalId));
+
+      const tx = dao.connect(proposer).execute(proposalId);
+
+      await expect(tx)
+        .to.emit(dao, "ProposalExecuted")
+        .withArgs(proposer.address, proposalId)
+
+      await expect(tx).to.changeEtherBalances(
+        [await dao.getAddress(), userToFund.address],
+        [-fundAmount, fundAmount],
+      );
+
+      expect(await dao.governancePot()).to.equal(0);
+    });
   });
 
   describe("setCreateProposalFee", async function () {

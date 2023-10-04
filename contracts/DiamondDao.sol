@@ -35,6 +35,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     address public reinsertPot;
     uint256 public createProposalFee;
 
+    uint256 public governancePot;
+
     IValidatorSetHbbft public validatorSet;
     IStakingHbbft public stakingHbbft;
     ProposalStatistic public statistic;
@@ -80,6 +82,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     constructor() {
         // Prevents initialization of implementation contract
         _disableInitializers();
+    }
+
+    receive() external payable {
+        governancePot += msg.value;
     }
 
     function initialize(
@@ -159,7 +165,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         uint256[] memory values,
         bytes[] memory calldatas,
         string memory description
-    ) external payable onlyPhase(Phase.Proposal) {
+    ) external payable nonReentrant onlyPhase(Phase.Proposal) {
         if (
             targets.length != values.length ||
             targets.length != calldatas.length ||
@@ -362,6 +368,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
                 calldatas[i]
             );
             AddressUpgradeable.verifyCallResult(success, returndata, "low-level call failed");
+
+            if (values[i] != 0) {
+                governancePot -= values[i];
+            }
         }
     }
 
