@@ -47,6 +47,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
 
     mapping(uint256 => Proposal) public proposals;
     mapping(uint256 => VotingResult) public results;
+    mapping(uint256 => uint256) public votingFinishEpochNum;
     mapping(uint256 => mapping(address => VoteRecord)) public votes;
     mapping(uint256 => EnumerableSetUpgradeable.AddressSet) private _proposalVoters;
 
@@ -130,7 +131,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         emit SetCreateProposalFee(_fee);
     }
 
-    function switchPhase() public {
+    function switchPhase() external nonReentrant {
         if (block.timestamp < daoPhase.end) {
             return;
         }
@@ -250,10 +251,12 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     function finalize(uint256 proposalId) external exists(proposalId) {
         _requireState(proposalId, ProposalState.VotingFinished);
 
-        VotingResult storage result = _countVotes(proposalId);
         Proposal storage proposal = proposals[proposalId];
+        VotingResult memory result = countVotes(proposalId);
 
-        bool accepted = _quorumReached(result);
+        _saveVotingResult(proposalId, result);
+
+        bool accepted = quorumReached(result);
 
         proposal.state = accepted ? ProposalState.Accepted : ProposalState.Declined;
 
@@ -298,19 +301,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         return proposals[proposalId];
     }
 
-    function hashProposal(
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        string memory description
-    ) public pure virtual returns (uint256) {
-        bytes32 descriptionHash = keccak256(bytes(description));
-
-        return uint256(keccak256(abi.encode(targets, values, calldatas, descriptionHash)));
-    }
-
-    function _countVotes(uint256 proposalId) private returns (VotingResult storage) {
-        VotingResult storage result = results[proposalId];
+    function countVotes(uint256 proposalId) public view returns (VotingResult memory) {
+        VotingResult memory result;
 
         address[] memory voters = getProposalVoters(proposalId);
 
@@ -335,11 +327,22 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         return result;
     }
 
-    function _quorumReached(VotingResult storage result) private view returns (bool) {
+    function quorumReached(VotingResult memory result) public pure returns (bool) {
         uint256 totalVotedStake = result.stakeYes + result.stakeNo + result.stakeAbstain;
         uint256 acceptanceThreshold = (totalVotedStake * 2) / 3;
 
         return result.stakeYes >= acceptanceThreshold;
+    }
+
+    function hashProposal(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) public pure virtual returns (uint256) {
+        bytes32 descriptionHash = keccak256(bytes(description));
+
+        return uint256(keccak256(abi.encode(targets, values, calldatas, descriptionHash)));
     }
 
     function _submitVote(
@@ -356,6 +359,17 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
             vote: _vote,
             reason: reason
         });
+    }
+
+    function _saveVotingResult(uint256 proposalId, VotingResult memory res) private {
+        VotingResult storage result = results[proposalId];
+
+        result.countAbstain = res.countAbstain;
+        result.countNo = res.countNo;
+        result.countYes = res.countYes;
+        result.stakeAbstain = res.stakeAbstain;
+        result.stakeNo = res.stakeNo;
+        result.stakeYes = res.stakeYes;
     }
 
     function _executeOperations(
