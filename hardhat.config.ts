@@ -5,6 +5,7 @@ import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@openzeppelin/hardhat-upgrades";
 import "hardhat-contract-sizer";
+import "hardhat-tracer";
 import "solidity-coverage";
 
 
