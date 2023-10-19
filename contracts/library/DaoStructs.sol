@@ -25,6 +25,7 @@ enum Phase {
 struct DaoPhase {
     uint64 start;
     uint64 end;
+    uint64 daoEpoch;
     Phase phase;
 }
 
@@ -45,6 +46,7 @@ struct VotingResult {
 
 struct Proposal {
     address proposer;
+    uint64 votingDaoEpoch;
     ProposalState state;
     address[] targets;
     uint256[] values;

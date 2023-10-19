@@ -45,10 +45,22 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
 
     uint256[] public currentPhaseProposals;
 
+    /// @dev Proposal ID to pSeaportroposal data mapping
     mapping(uint256 => Proposal) public proposals;
+
+    /// @dev Proposal voting results mapping
     mapping(uint256 => VotingResult) public results;
-    mapping(uint256 => uint256) public votingFinishEpochNum;
+
+    /// @dev proposalId => (voter => vote) mapping
     mapping(uint256 => mapping(address => VoteRecord)) public votes;
+
+    /// @dev daoEpoch => (voter => stakeSnapshot) - Voter stake amount snapshot on voting finalization
+    mapping(uint256 => mapping(address => uint256)) public daoEpochStakeSnapshot;
+
+    /// @dev daoEpoch => voters[] - specific DAO epoch voters (all proposals)
+    mapping(uint256 => EnumerableSetUpgradeable.AddressSet) private _daoEpochVoters;
+
+    /// @dev proposal Id => voters[] - specific proposal voters
     mapping(uint256 => EnumerableSetUpgradeable.AddressSet) private _proposalVoters;
 
     modifier exists(uint256 proposalId) {
@@ -119,6 +131,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         daoPhase.start = _startTimestamp;
         daoPhase.end = _startTimestamp + DAO_PHASE_DURATION;
         daoPhase.phase = Phase.Proposal;
+        daoPhase.daoEpoch = 1;
     }
 
     function setCreateProposalFee(uint256 _fee) external onlyGovernance {
@@ -136,10 +149,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
             return;
         }
 
-        uint64 newPhaseStart = daoPhase.end + 1;
-
         Phase newPhase = daoPhase.phase == Phase.Proposal ? Phase.Voting : Phase.Proposal;
 
+        uint64 newPhaseStart = daoPhase.end + 1;
         daoPhase.start = newPhaseStart;
         daoPhase.end = newPhaseStart + DAO_PHASE_DURATION;
         daoPhase.phase = newPhase;
@@ -148,10 +160,22 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
             ? ProposalState.Active
             : ProposalState.VotingFinished;
 
+        bool snapshotStakes = stateToSet == ProposalState.VotingFinished;
+
         for (uint256 i = 0; i < currentPhaseProposals.length; ++i) {
             uint256 proposalId = currentPhaseProposals[i];
 
             proposals[proposalId].state = stateToSet;
+
+            if (snapshotStakes) {
+                proposals[proposalId].votingDaoEpoch = daoPhase.daoEpoch;
+            }
+        }
+
+        if (snapshotStakes) {
+            _snapshotStakes(daoPhase.daoEpoch);
+
+            daoPhase.daoEpoch += 1;
         }
 
         if (newPhase == Phase.Proposal) {
@@ -252,7 +276,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         _requireState(proposalId, ProposalState.VotingFinished);
 
         Proposal storage proposal = proposals[proposalId];
-        VotingResult memory result = countVotes(proposalId);
+        VotingResult memory result = _countVotes(proposalId);
 
         _saveVotingResult(proposalId, result);
 
@@ -301,14 +325,34 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         return proposals[proposalId];
     }
 
-    function countVotes(uint256 proposalId) public view returns (VotingResult memory) {
+    function countVotes(
+        uint256 proposalId
+    ) external view exists(proposalId) returns (VotingResult memory) {
+        ProposalState state = proposals[proposalId].state;
+
+        if (
+            state == ProposalState.Accepted ||
+            state == ProposalState.Declined ||
+            state == ProposalState.Executed
+        ) {
+            return results[proposalId];
+        } else if (state == ProposalState.VotingFinished) {
+            return _countVotes(proposalId);
+        } else {
+            revert UnexpectedProposalState(proposalId, state);
+        }
+    }
+
+    function _countVotes(uint256 proposalId) private view returns (VotingResult memory) {
+        uint64 daoEpoch = proposals[proposalId].votingDaoEpoch;
+
         VotingResult memory result;
 
         address[] memory voters = getProposalVoters(proposalId);
 
         for (uint256 i = 0; i < voters.length; ++i) {
             address voter = voters[i];
-            uint256 stakeAmount = stakingHbbft.stakeAmountTotal(voter);
+            uint256 stakeAmount = daoEpochStakeSnapshot[daoEpoch][voter];
 
             Vote _vote = votes[proposalId][voter].vote;
 
@@ -345,6 +389,17 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         return uint256(keccak256(abi.encode(targets, values, calldatas, descriptionHash)));
     }
 
+    function _snapshotStakes(uint64 daoEpoch) private {
+        address[] memory daoEpochVoters = _daoEpochVoters[daoEpoch].values();
+
+        for (uint256 i = 0; i < daoEpochVoters.length; ++i) {
+            address voter = daoEpochVoters[i];
+            uint256 stakeAmount = stakingHbbft.stakeAmountTotal(voter);
+
+            daoEpochStakeSnapshot[daoEpoch][voter] = stakeAmount;
+        }
+    }
+
     function _submitVote(
         address voter,
         uint256 proposalId,
@@ -353,7 +408,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     ) private {
         _requireState(proposalId, ProposalState.Active);
 
+        _daoEpochVoters[daoPhase.daoEpoch].add(voter);
         _proposalVoters[proposalId].add(voter);
+
         votes[proposalId][voter] = VoteRecord({
             timestamp: uint64(block.timestamp),
             vote: _vote,
