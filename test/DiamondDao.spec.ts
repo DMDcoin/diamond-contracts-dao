@@ -574,6 +574,7 @@ describe("DiamondDao contract", function () {
 
       expect(Object.values(savedData)).to.deep.equal([
         proposer.address,
+        0,
         BigInt(ProposalState.Created),
         targets,
         values,
