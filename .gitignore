@@ -1,0 +1,21 @@
+node_modules/
+cache/
+artifacts/
+.mnemonic
+
+# Logs
+logs/
+*.log
+
+typechain-types/
+api/contracts/
+
+build/
+dist/
+
+# Coverage
+coverage/
+coverage.json
+
+# IDE
+.vscode/
