@@ -144,7 +144,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         emit SetCreateProposalFee(_fee);
     }
 
-    function switchPhase() external nonReentrant {
+    function switchPhase() external {
         if (block.timestamp < daoPhase.end) {
             return;
         }
@@ -190,7 +190,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         uint256[] memory values,
         bytes[] memory calldatas,
         string memory description
-    ) external payable nonReentrant onlyPhase(Phase.Proposal) {
+    ) external payable onlyPhase(Phase.Proposal) {
         if (
             targets.length != values.length ||
             targets.length != calldatas.length ||
@@ -276,7 +276,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         _requireState(proposalId, ProposalState.VotingFinished);
 
         Proposal storage proposal = proposals[proposalId];
-        VotingResult memory result = _countVotes(proposalId);
+        VotingResult memory result = _countVotes(proposalId, true);
 
         _saveVotingResult(proposalId, result);
 
@@ -337,13 +337,15 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         ) {
             return results[proposalId];
         } else if (state == ProposalState.VotingFinished) {
-            return _countVotes(proposalId);
-        } else {
+            return _countVotes(proposalId, true);
+        } else if (state == ProposalState.Active) {
+            return _countVotes(proposalId, false);
+        } {
             revert UnexpectedProposalState(proposalId, state);
         }
     }
 
-    function _countVotes(uint256 proposalId) private view returns (VotingResult memory) {
+    function _countVotes(uint256 proposalId, bool useSnapshot) private view returns (VotingResult memory) {
         uint64 daoEpoch = proposals[proposalId].votingDaoEpoch;
 
         VotingResult memory result;
@@ -352,7 +354,14 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
 
         for (uint256 i = 0; i < voters.length; ++i) {
             address voter = voters[i];
-            uint256 stakeAmount = daoEpochStakeSnapshot[daoEpoch][voter];
+
+            uint256 stakeAmount = 0;
+
+            if (useSnapshot) {
+                stakeAmount = daoEpochStakeSnapshot[daoEpoch][voter];
+            } else {
+                stakeAmount = stakingHbbft.stakeAmountTotal(voter);
+            }
 
             Vote _vote = votes[proposalId][voter].vote;
 

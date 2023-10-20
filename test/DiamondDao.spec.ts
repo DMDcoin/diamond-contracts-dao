@@ -891,6 +891,182 @@ describe("DiamondDao contract", function () {
     });
   });
 
+  describe("countVotes", async function () {
+    it("should revert count votes for non-existing proposal", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposalId = getRandomBigInt();
+
+      await expect(
+        dao.countVotes(proposalId)
+      ).to.be.revertedWithCustomError(dao, "ProposalNotExist")
+        .withArgs(proposalId);
+    });
+
+    it("should revert count votes for proposal with state = Created", async function () {
+      const { dao } = await loadFixture(deployFixture);
+      const proposer = users[10];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await expect(
+        dao.countVotes(proposalId)
+      ).to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
+        .withArgs(proposalId, ProposalState.Created);
+    });
+
+    it("should revert count votes for proposal with state = Canceled", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      expect(await dao.connect(proposer).cancel(proposalId, "test"));
+
+      await expect(
+        dao.countVotes(proposalId)
+      ).to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
+        .withArgs(proposalId, ProposalState.Canceled);
+    });
+
+    it("should use current stake amounts for active proposal", async function () {
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const proposer = users[4];
+      const voters = users.slice(5, 15);
+      const stakeAmount = ethers.parseEther('15');
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters, stakeAmount);
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await swithPhase(dao);
+      await vote(dao, proposalId, voters, Vote.Yes);
+
+      expect(Object.values(await dao.countVotes(proposalId))).to.deep.equal([
+        0n,
+        BigInt(voters.length),
+        0n,
+        0n,
+        stakeAmount * BigInt(voters.length),
+        0n
+      ]);
+
+      await vote(dao, proposalId, voters, Vote.No);
+
+      expect(Object.values(await dao.countVotes(proposalId))).to.deep.equal([
+        0n,
+        0n,
+        BigInt(voters.length),
+        0n,
+        0n,
+        stakeAmount * BigInt(voters.length)
+      ]);
+    });
+
+    it("should use stake amounts snapshot after voting finish", async function () {
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const proposer = users[4];
+      const votersYes = users.slice(5, 15);
+      const votersNo = users.slice(15, 10);
+      const stakeAmount = ethers.parseEther('10');
+
+      await addValidatorsStake(
+        mockValidatorSet,
+        mockStaking,
+        [...votersYes, ...votersNo],
+        stakeAmount
+      );
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await swithPhase(dao);
+      await vote(dao, proposalId, votersYes, Vote.Yes);
+      await vote(dao, proposalId, votersNo, Vote.No);
+      await swithPhase(dao);
+
+      const expectedVotesCount = [
+        0n,
+        BigInt(votersYes.length),
+        BigInt(votersNo.length),
+        0n,
+        stakeAmount * BigInt(votersYes.length),
+        stakeAmount * BigInt(votersNo.length),
+      ];
+
+      expect(Object.values(await dao.countVotes(proposalId))).to.deep.equal(expectedVotesCount);
+
+      await addValidatorsStake(
+        mockValidatorSet,
+        mockStaking,
+        votersNo,
+        stakeAmount * 5n
+      );
+
+      expect(Object.values(await dao.countVotes(proposalId))).to.deep.equal(expectedVotesCount);
+    });
+
+    it("should return saved counting result of Declined proposal", async function () {
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const voters = users.slice(5, 15);
+
+      const { proposalId } = await createProposal(dao, users[4], "a");
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+      await swithPhase(dao);
+      await vote(dao, proposalId, voters, Vote.Yes);
+      await swithPhase(dao);
+
+      await dao.finalize(proposalId);
+
+      expect(Object.values(await dao.countVotes(proposalId)))
+        .to.deep.equal(Object.values(await dao.results(proposalId)));
+    });
+
+    it("should return saved counting result of Accepted proposal", async function () {
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const voters = users.slice(5, 15);
+
+      const { proposalId } = await createProposal(dao, users[4], "a");
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+      await swithPhase(dao);
+      await vote(dao, proposalId, voters, Vote.No);
+      await swithPhase(dao);
+
+      await dao.finalize(proposalId);
+
+      expect(Object.values(await dao.countVotes(proposalId)))
+        .to.deep.equal(Object.values(await dao.results(proposalId)));
+    });
+
+    it("should return saved counting result of Executed proposal", async function () {
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const voters = users.slice(5, 15);
+
+      const { proposalId } = await createProposal(dao, users[4], "a");
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+      await swithPhase(dao);
+      await vote(dao, proposalId, voters, Vote.Yes);
+      await swithPhase(dao);
+
+      await users[0].sendTransaction({
+        value: ethers.parseEther('100'),
+        to: await dao.getAddress()
+      });
+
+      await dao.finalize(proposalId);
+      await dao.execute(proposalId);
+
+      expect((await dao.getProposal(proposalId)).state).to.equal(ProposalState.Executed);
+
+      expect(Object.values(await dao.countVotes(proposalId)))
+        .to.deep.equal(Object.values(await dao.results(proposalId)));
+    });
+  });
+
   describe("finalize", async function () {
     it("should revert finalize of non-existing proposal", async function () {
       const { dao } = await loadFixture(deployFixture);
@@ -1006,6 +1182,23 @@ describe("DiamondDao contract", function () {
       const statisticsAfter = await dao.statistic();
 
       expect(statisticsAfter.declined).to.equal(statisticBefore.declined + 1n);
+    });
+
+    it("should finalize proposal with abstain votes as declined", async function () {
+      const voters = users.slice(10, 20);
+
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { proposalId } = await createProposal(dao, users[1]);
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+
+      await swithPhase(dao);
+      await vote(dao, proposalId, voters, Vote.Abstain);
+      await swithPhase(dao);
+
+      expect(await dao.finalize(proposalId));
+
+      expect((await dao.getProposal(proposalId)).state).to.equal(ProposalState.Declined);
     });
   });
 
