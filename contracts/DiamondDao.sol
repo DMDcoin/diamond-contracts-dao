@@ -18,7 +18,8 @@ import {
     ProposalStatistic,
     Vote,
     VoteRecord,
-    VotingResult
+    VotingResult,
+    AllowedParams
 } from "./library/DaoStructs.sol"; // prettier-ignore
 
 /// Diamond DAO central point of operation.
@@ -48,8 +49,14 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     /// @dev Proposal ID to pSeaportroposal data mapping
     mapping(uint256 => Proposal) public proposals;
 
+    /// @dev contract address => is core bool
+    mapping(address => bool) public isCoreContract;
+
     /// @dev Proposal voting results mapping
     mapping(uint256 => VotingResult) public results;
+
+    /// @dev function selector => AllowedParams mapping
+    mapping(bytes4 => AllowedParams) public changeAbleParameters;
 
     /// @dev proposalId => (voter => vote) mapping
     mapping(uint256 => mapping(address => VoteRecord)) public votes;
@@ -80,6 +87,27 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     modifier onlyPhase(Phase phase) {
         if (daoPhase.phase != phase) {
             revert UnavailableInCurrentPhase(daoPhase.phase);
+        }
+        _;
+    }
+
+    modifier onlyAllowedParams(address[] memory targets, bytes[] memory callDatas) {
+        for (uint256 i = 0; i < targets.length; i++) {
+            if (!isCoreContract[targets[i]]) continue;
+            (bytes4 setFuncSelector, uint256 newVal) = _extractCallData(callDatas[i]);
+            AllowedParams memory allowedParams = changeAbleParameters[setFuncSelector];
+            if (!allowedParams.allowed) revert FunctionUpgradeNotAllowed(setFuncSelector, targets[i]);
+            uint256[] memory params = allowedParams.params;
+            uint256 currVal = _getCurrentValWithSelector(targets[i], allowedParams.getter);
+
+            for (uint256 j = 0; j < params.length; j++) {
+                if (params[j] == currVal) {
+                    uint256 leftVal = (j > 0) ? params[j - 1] : params[0];
+                    uint256 rightVal = (j < params.length - 1) ? params[j + 1] : params[params.length - 1];
+                    if (newVal != leftVal && newVal != rightVal) revert InvalidUpgradeValue(currVal, newVal);
+                    break;
+                }
+            }
         }
         _;
     }
@@ -144,6 +172,25 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         emit SetCreateProposalFee(_fee);
     }
 
+    function setChangeAbleParameters(
+        bool allowed,
+        string memory setter,
+        string memory getter,
+        uint256[] memory params
+    ) external onlyGovernance {
+        changeAbleParameters[bytes4(keccak256(bytes(setter)))] = AllowedParams(
+            allowed,
+            getter,
+            params
+        );
+        emit SetChangeAbleParameters(allowed, setter, getter, params);
+    }
+
+    function setIsCoreContract(address _add, bool isCore) external onlyGovernance {
+        isCoreContract[_add] = isCore;
+        emit SetIsCoreContract(_add, isCore);
+    }
+
     function switchPhase() external {
         if (block.timestamp < daoPhase.end) {
             return;
@@ -190,7 +237,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         uint256[] memory values,
         bytes[] memory calldatas,
         string memory description
-    ) external payable onlyPhase(Phase.Proposal) {
+    ) external payable onlyPhase(Phase.Proposal) onlyAllowedParams(targets, calldatas) {
         if (
             targets.length != values.length ||
             targets.length != calldatas.length ||
@@ -476,5 +523,30 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
 
         return
             miningAddress != address(0) && validatorSet.validatorAvailableSince(miningAddress) != 0;
+    }
+
+    function _getCurrentValWithSelector(address contractAddress, string memory funcSelector) private view returns(uint256) {
+        bytes memory selectorBytes = abi.encodeWithSelector(bytes4(keccak256(bytes(funcSelector))));
+
+        (bool success, bytes memory data) = contractAddress.staticcall(selectorBytes);
+        if (!success) revert ContractCallFailed(selectorBytes, contractAddress);
+ 
+        uint256 result;
+        assembly {
+            result := mload(add(data, 0x20))
+        }
+        return result;
+    }
+
+    function _extractCallData(bytes memory _data) private pure returns (bytes4 funcSelector, uint256 value) {
+        // Extract function selector
+        assembly {
+            funcSelector := mload(add(_data, 0x20))
+        }
+
+        // Extract value from parameter (assuming it's uint256)
+        assembly {
+            value := mload(add(_data, 0x24))
+        }
     }
 }
