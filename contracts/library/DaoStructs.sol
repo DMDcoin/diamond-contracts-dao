@@ -52,6 +52,7 @@ struct Proposal {
     uint256[] values;
     bytes[] calldatas;
     string description;
+    uint256 daoPhaseCount;
 }
 
 struct ProposalStatistic {
