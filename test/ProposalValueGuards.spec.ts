@@ -23,6 +23,7 @@ export function getRandomBigInt(): bigint {
 describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
   let users: HardhatEthersSigner[];
   let reinsertPot: HardhatEthersSigner;
+
   let dao: any;
   let mockValidatorSet: any;
   let mockStaking: any;
@@ -168,7 +169,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
     return { proposalId, proposer };
   }
 
-  describe("self function calls", async function () {
+  describe("proposal Value Guards", async function () {
     it("should set staking contract as isCoreContract", async function () {
         const funcFragment = dao.interface.getFunction("setIsCoreContract");
         const calldata = dao.interface.encodeFunctionData(funcFragment, [await mockStaking.getAddress(), true]);
@@ -292,7 +293,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
         );
     });
 
-    it("should successfully propose ecosystem parameter change decrement", async function () {
+    it("should successfully propose ecosystem parameter change decrement and confirm proposalType", async function () {
         const proposer = users[2];
         const funcFragment = mockStaking.interface.getFunction("setDelegatorMinStake");
         const calldata = mockStaking.interface.encodeFunctionData(funcFragment, ['50000000000000000000']);
@@ -320,7 +321,40 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
             calldatas,
             description
           );
-    });
-  });
 
+        expect((await dao.getProposal(proposalId)).proposalType).to.equal(2);
+    });
+
+    it("should successfully propose contract upgrade and confirm proposalType", async function () {
+      const proposer = users[2];
+      const funcFragment = mockValidatorSet.interface.getFunction("validatorAvailableSince");
+      const calldata = mockValidatorSet.interface.encodeFunctionData(funcFragment, [await mockValidatorSet.getAddress()]);
+
+      const targets = [await mockValidatorSet.getAddress()];
+      const values = [0n];
+      const calldatas = [calldata];
+      const description = "test";
+
+      const proposalId = await dao.hashProposal(
+        targets,
+        values,
+        calldatas,
+        description
+      );
+
+      await expect(
+        dao.connect(proposer).propose(targets, values, calldatas, description, { value: createProposalFee })
+      ).to.emit(dao, "ProposalCreated")
+        .withArgs(
+          proposer.address,
+          proposalId,
+          targets,
+          values,
+          calldatas,
+          description
+        );
+
+      expect((await dao.getProposal(proposalId)).proposalType).to.equal(1);
+  });
+  });
 });

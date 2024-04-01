@@ -1306,4 +1306,15 @@ describe("DiamondDao contract", function () {
       ).to.be.revertedWithCustomError(dao, "OnlyGovernance");
     });
   });
+
+  describe("daoPhaseCount", async function () {
+    it("should confirm daoPhaseCount change", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      expect(await dao.daoPhaseCount()).to.equal(1);
+      await swithPhase(dao);
+      await swithPhase(dao);
+      expect(await dao.daoPhaseCount()).to.equal(2);
+    });
+  });
 });

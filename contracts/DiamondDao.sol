@@ -433,6 +433,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         return result;
     }
 
+    // 33% or 50% exceeding of yes, no or total?
     function quorumReached(ProposalType _type, VotingResult memory result) public pure returns (bool) {
         uint256 totalVotedStake = result.stakeYes + result.stakeNo + result.stakeAbstain;
         
@@ -442,9 +443,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         uint256 acceptanceThreshold;
 
         if (_type == ProposalType.ContractUpgrade) {
-            acceptanceThreshold = totalVotedStake / 2; // 50% threshold
+            acceptanceThreshold = (totalVotedStake * 150) / 200; // 50% threshold
         } else {
-            acceptanceThreshold = (totalVotedStake * 2) / 3; // 33.33% threshold
+            acceptanceThreshold = (totalVotedStake * 133) / 200; // 33% threshold
         }
 
         return result.stakeYes >= acceptanceThreshold;
