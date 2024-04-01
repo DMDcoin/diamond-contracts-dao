@@ -19,7 +19,8 @@ import {
     Vote,
     VoteRecord,
     VotingResult,
-    AllowedParams
+    AllowedParams,
+    ProposalType
 } from "./library/DaoStructs.sol"; // prettier-ignore
 
 /// Diamond DAO central point of operation.
@@ -30,7 +31,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
 
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
-    uint256 public daoPhaseCount = 1;
+    uint256 public daoPhaseCount;
     uint256 public constant MAX_NEW_PROPOSALS = 100;
     uint64 public constant DAO_PHASE_DURATION = 14 days;
 
@@ -161,6 +162,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         daoPhase.end = _startTimestamp + DAO_PHASE_DURATION;
         daoPhase.phase = Phase.Proposal;
         daoPhase.daoEpoch = 1;
+        daoPhaseCount = 1;
     }
 
     function setCreateProposalFee(uint256 _fee) external onlyGovernance {
@@ -263,7 +265,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         }
 
         address proposer = msg.sender;
-
+        
         Proposal storage proposal = proposals[proposalId];
 
         proposal.proposer = proposer;
@@ -273,6 +275,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         proposal.calldatas = calldatas;
         proposal.description = description;
         proposal.daoPhaseCount = daoPhaseCount;
+        proposal.proposalType = _getProposalType(targets, calldatas);
 
         currentPhaseProposals.push(proposalId);
         statistic.total += 1;
@@ -550,6 +553,19 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         // Extract value from parameter (assuming it's uint256)
         assembly {
             value := mload(add(_data, 0x24))
+        }
+    }
+
+    function _getProposalType(address[] memory targets, bytes[] memory calldatas) private view returns (ProposalType _type) {
+        _type = ProposalType.Open;
+
+        for (uint256 i = 0; i < calldatas.length; i++) {
+            if (calldatas[i].length == 0) continue;
+            if (isCoreContract[targets[i]]) {
+                return ProposalType.EcosystemParameterChange;
+            } else {
+                _type = ProposalType.ContractUpgrade;
+            }
         }
     }
 }

@@ -22,6 +22,12 @@ enum Phase {
     Voting
 }
 
+enum ProposalType {
+    Open,
+    ContractUpgrade,
+    EcosystemParameterChange
+}
+
 struct DaoPhase {
     uint64 start;
     uint64 end;
@@ -53,6 +59,7 @@ struct Proposal {
     bytes[] calldatas;
     string description;
     uint256 daoPhaseCount;
+    ProposalType proposalType;
 }
 
 struct ProposalStatistic {

@@ -579,7 +579,9 @@ describe("DiamondDao contract", function () {
         targets,
         values,
         calldatas,
-        description
+        description,
+        1, // first phase
+        0 // open proposal
       ]);
     });
 
