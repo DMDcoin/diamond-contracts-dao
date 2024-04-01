@@ -265,7 +265,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         }
 
         address proposer = msg.sender;
-        
+
         Proposal storage proposal = proposals[proposalId];
 
         proposal.proposer = proposer;
@@ -333,7 +333,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
 
         _saveVotingResult(proposalId, result);
 
-        bool accepted = quorumReached(result);
+        bool accepted = quorumReached(proposal.proposalType, result);
 
         proposal.state = accepted ? ProposalState.Accepted : ProposalState.Declined;
 
@@ -433,9 +433,19 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         return result;
     }
 
-    function quorumReached(VotingResult memory result) public pure returns (bool) {
+    function quorumReached(ProposalType _type, VotingResult memory result) public pure returns (bool) {
         uint256 totalVotedStake = result.stakeYes + result.stakeNo + result.stakeAbstain;
-        uint256 acceptanceThreshold = (totalVotedStake * 2) / 3;
+        
+        // Check if there are no votes at all
+        if (totalVotedStake == 0) return false;
+        
+        uint256 acceptanceThreshold;
+
+        if (_type == ProposalType.ContractUpgrade) {
+            acceptanceThreshold = totalVotedStake / 2; // 50% threshold
+        } else {
+            acceptanceThreshold = (totalVotedStake * 2) / 3; // 33.33% threshold
+        }
 
         return result.stakeYes >= acceptanceThreshold;
     }
