@@ -54,7 +54,9 @@ struct Proposal {
     address[] targets;
     uint256[] values;
     bytes[] calldatas;
+    string title;
     string description;
+    string discussionUrl;
     uint256 daoPhaseCount;
     ProposalType proposalType;
 }

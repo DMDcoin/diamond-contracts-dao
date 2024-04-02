@@ -97,7 +97,9 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       _targets,
       _values,
       _calldatas,
+      "title",
       _description,
+      "url",
       { value: createProposalFee }
     );
 
@@ -197,7 +199,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
         const description = "test";
   
         await expect(
-          dao.connect(proposer).propose(targets, values, calldatas, description, { value: createProposalFee })
+          dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
         ).to.be.revertedWithCustomError(dao, "FunctionUpgradeNotAllowed");
     });
 
@@ -258,7 +260,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
         );
   
         await expect(
-          dao.connect(proposer).propose(targets, values, calldatas, description, { value: createProposalFee })
+          dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
         ).to.be.revertedWithCustomError(dao, "InvalidUpgradeValue");
       });
 
@@ -280,7 +282,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       );
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, description, { value: createProposalFee })
+        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
       ).to.emit(dao, "ProposalCreated")
         .withArgs(
           proposer.address,
@@ -288,7 +290,9 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           targets,
           values,
           calldatas,
-          description
+          "title",
+          description,
+          "url"
         );
     });
 
@@ -310,7 +314,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
         );
   
         await expect(
-          dao.connect(proposer).propose(targets, values, calldatas, description, { value: createProposalFee })
+          dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
         ).to.emit(dao, "ProposalCreated")
           .withArgs(
             proposer.address,
@@ -318,7 +322,9 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
             targets,
             values,
             calldatas,
-            description
+            "title",
+            description,
+            "url"
           );
 
         expect((await dao.getProposal(proposalId)).proposalType).to.equal(2);
@@ -342,7 +348,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       );
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, description, { value: createProposalFee })
+        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
       ).to.emit(dao, "ProposalCreated")
         .withArgs(
           proposer.address,
@@ -350,7 +356,9 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           targets,
           values,
           calldatas,
-          description
+          "title",
+          description,
+          "url"
         );
 
       expect((await dao.getProposal(proposalId)).proposalType).to.equal(1);

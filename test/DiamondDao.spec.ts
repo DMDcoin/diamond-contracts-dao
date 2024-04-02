@@ -99,7 +99,9 @@ describe("DiamondDao contract", function () {
       _targets,
       _values,
       _calldatas,
+      "title",
       _description,
+      "url",
       { value: createProposalFee }
     );
 
@@ -358,7 +360,7 @@ describe("DiamondDao contract", function () {
       const calldatas: string[] = [];
 
       await expect(
-        dao.propose(targets, values, calldatas, "test", { value: createProposalFee })
+        dao.propose(targets, values, calldatas, "title", "test", "url", { value: createProposalFee })
       ).to.be.revertedWithCustomError(dao, "InvalidArgument")
     });
 
@@ -370,7 +372,7 @@ describe("DiamondDao contract", function () {
       const calldatas = [EmptyBytes, EmptyBytes];
 
       await expect(
-        dao.propose(targets, values, calldatas, "test", { value: createProposalFee })
+        dao.propose(targets, values, calldatas, "title", "test", "url", { value: createProposalFee })
       ).to.be.revertedWithCustomError(dao, "InvalidArgument")
     });
 
@@ -382,7 +384,7 @@ describe("DiamondDao contract", function () {
       const calldatas = [EmptyBytes, EmptyBytes];
 
       await expect(
-        dao.propose(targets, values, calldatas, "test", { value: createProposalFee })
+        dao.propose(targets, values, calldatas, "title", "test", "url", { value: createProposalFee })
       ).to.be.revertedWithCustomError(dao, "InvalidArgument")
     });
 
@@ -394,7 +396,7 @@ describe("DiamondDao contract", function () {
       const calldatas = [EmptyBytes];
 
       await expect(
-        dao.propose(targets, values, calldatas, "test", { value: 0n })
+        dao.propose(targets, values, calldatas, "title", "test", "url", { value: 0n })
       ).to.be.revertedWithCustomError(dao, "InsufficientFunds")
     });
 
@@ -413,10 +415,10 @@ describe("DiamondDao contract", function () {
         description
       );
 
-      expect(await dao.propose(targets, values, calldatas, description, { value: createProposalFee }));
+      expect(await dao.propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee }));
 
       await expect(
-        dao.propose(targets, values, calldatas, description, { value: createProposalFee })
+        dao.propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
       ).to.be.revertedWithCustomError(dao, "ProposalAlreadyExist")
         .withArgs(proposalId);
     });
@@ -431,7 +433,7 @@ describe("DiamondDao contract", function () {
       const calldatas = [EmptyBytes];
 
       await expect(
-        dao.propose(targets, values, calldatas, "test", { value: createProposalFee })
+        dao.propose(targets, values, calldatas, "title", "test", "url", { value: createProposalFee })
       ).to.be.revertedWithCustomError(dao, "UnavailableInCurrentPhase")
         .withArgs(DaoPhase.Voting);
     });
@@ -469,7 +471,9 @@ describe("DiamondDao contract", function () {
           targets,
           values,
           calldatas,
+          "title",
           description,
+          "url",
           { value: createProposalFee }
         )
       ).to.be.revertedWithCustomError(dao, "TransferFailed")
@@ -488,7 +492,9 @@ describe("DiamondDao contract", function () {
           [users[3].address],
           [ethers.parseEther('10')],
           [EmptyBytes],
+          "title",
           "should fail",
+          "url",
           { value: createProposalFee }
         )
       ).to.be.revertedWithCustomError(dao, "NewProposalsLimitExceeded");
@@ -505,7 +511,7 @@ describe("DiamondDao contract", function () {
       const description = "test";
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, description, { value: createProposalFee })
+        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
       ).to.changeEtherBalances(
         [proposer.address, reinsertPot.address],
         [-createProposalFee, createProposalFee]
@@ -530,7 +536,7 @@ describe("DiamondDao contract", function () {
       );
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, description, { value: createProposalFee })
+        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
       ).to.emit(dao, "ProposalCreated")
         .withArgs(
           proposer.address,
@@ -538,7 +544,9 @@ describe("DiamondDao contract", function () {
           targets,
           values,
           calldatas,
-          description
+          "title",
+          description,
+          "url"
         );
     });
 
@@ -563,7 +571,9 @@ describe("DiamondDao contract", function () {
         targets,
         values,
         calldatas,
+        "title",
         description,
+        "url",
         { value: createProposalFee }
       ));
 
@@ -578,7 +588,9 @@ describe("DiamondDao contract", function () {
         targets,
         values,
         calldatas,
+        "title",
         description,
+        "url",
         1, // first phase
         0 // open proposal
       ]);

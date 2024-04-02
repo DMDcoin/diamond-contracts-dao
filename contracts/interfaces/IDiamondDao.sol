@@ -10,7 +10,9 @@ interface IDiamondDao {
         address[] targets,
         uint256[] values,
         bytes[] calldatas,
-        string description
+        string title,
+        string description,
+        string discussionUrl
     );
 
     event ProposalCanceled(address indexed proposer, uint256 indexed proposalId, string reason);
@@ -56,7 +58,9 @@ interface IDiamondDao {
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
-        string memory description
+        string memory title,
+        string memory description,
+        string memory discussionUrl
     ) external payable;
 
     function cancel(uint256 proposalId, string calldata reason) external;

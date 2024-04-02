@@ -240,7 +240,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
-        string memory description
+        string memory title,
+        string memory description,
+        string memory discussionUrl
     ) external payable onlyPhase(Phase.Proposal) onlyAllowedParams(targets, calldatas) {
         if (
             targets.length != values.length ||
@@ -273,7 +275,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         proposal.targets = targets;
         proposal.values = values;
         proposal.calldatas = calldatas;
+        proposal.title = title;
         proposal.description = description;
+        proposal.discussionUrl = discussionUrl;
         proposal.daoPhaseCount = daoPhaseCount;
         proposal.proposalType = _getProposalType(targets, calldatas);
 
@@ -282,7 +286,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
 
         _transfer(reinsertPot, msg.value);
 
-        emit ProposalCreated(proposer, proposalId, targets, values, calldatas, description);
+        emit ProposalCreated(proposer, proposalId, targets, values, calldatas, title, description, discussionUrl);
     }
 
     function cancel(uint256 proposalId, string calldata reason) external exists(proposalId) {
@@ -430,7 +434,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         return result;
     }
 
-    // 33% or 50% exceeding of yes, no or total?
     function quorumReached(ProposalType _type, VotingResult memory result) public pure returns (bool) {
         uint256 totalVotedStake = result.stakeYes + result.stakeNo;
         
@@ -440,9 +443,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         uint256 acceptanceThreshold;
 
         if (_type == ProposalType.ContractUpgrade) {
-            acceptanceThreshold = ((totalVotedStake * 50) / 100) +  result.stakeNo;
+            acceptanceThreshold = ((totalVotedStake * 50) / 100) + result.stakeNo;
         } else {
-            acceptanceThreshold = ((totalVotedStake * 33) / 100) +  result.stakeNo;
+            acceptanceThreshold = ((totalVotedStake * 33) / 100) + result.stakeNo;
         }
 
         return result.stakeYes >= acceptanceThreshold;

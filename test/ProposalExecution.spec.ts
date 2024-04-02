@@ -90,7 +90,9 @@ describe("DAO proposal execution", function () {
       _targets,
       _values,
       _calldatas,
+      "title",
       _description,
+      "url",
       { value: createProposalFee }
     );
 
