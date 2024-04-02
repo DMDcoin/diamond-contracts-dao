@@ -424,9 +424,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
             } else if (_vote == Vote.No) {
                 result.countNo += 1;
                 result.stakeNo += stakeAmount;
-            } else {
-                result.countAbstain += 1;
-                result.stakeAbstain += stakeAmount;
             }
         }
 
@@ -435,17 +432,17 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
 
     // 33% or 50% exceeding of yes, no or total?
     function quorumReached(ProposalType _type, VotingResult memory result) public pure returns (bool) {
-        uint256 totalVotedStake = result.stakeYes + result.stakeNo + result.stakeAbstain;
+        uint256 totalVotedStake = result.stakeYes + result.stakeNo;
         
         // Check if there are no votes at all
         if (totalVotedStake == 0) return false;
-        
+
         uint256 acceptanceThreshold;
 
         if (_type == ProposalType.ContractUpgrade) {
-            acceptanceThreshold = (totalVotedStake * 150) / 200; // 50% threshold
+            acceptanceThreshold = ((totalVotedStake * 50) / 100) +  result.stakeNo;
         } else {
-            acceptanceThreshold = (totalVotedStake * 133) / 200; // 33% threshold
+            acceptanceThreshold = ((totalVotedStake * 33) / 100) +  result.stakeNo;
         }
 
         return result.stakeYes >= acceptanceThreshold;
@@ -494,10 +491,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     function _saveVotingResult(uint256 proposalId, VotingResult memory res) private {
         VotingResult storage result = results[proposalId];
 
-        result.countAbstain = res.countAbstain;
         result.countNo = res.countNo;
         result.countYes = res.countYes;
-        result.stakeAbstain = res.stakeAbstain;
         result.stakeNo = res.stakeNo;
         result.stakeYes = res.stakeYes;
     }

@@ -12,7 +12,6 @@ enum ProposalState {
 }
 
 enum Vote {
-    Abstain,
     No,
     Yes
 }
@@ -42,10 +41,8 @@ struct VoteRecord {
 }
 
 struct VotingResult {
-    uint64 countAbstain;
     uint64 countYes;
     uint64 countNo;
-    uint256 stakeAbstain;
     uint256 stakeYes;
     uint256 stakeNo;
 }

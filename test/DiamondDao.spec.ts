@@ -23,7 +23,6 @@ enum DaoPhase {
 }
 
 enum Vote {
-  Abstain,
   No,
   Yes
 }
@@ -946,9 +945,7 @@ describe("DiamondDao contract", function () {
       await vote(dao, proposalId, voters, Vote.Yes);
 
       expect(Object.values(await dao.countVotes(proposalId))).to.deep.equal([
-        0n,
         BigInt(voters.length),
-        0n,
         0n,
         stakeAmount * BigInt(voters.length),
         0n
@@ -958,9 +955,7 @@ describe("DiamondDao contract", function () {
 
       expect(Object.values(await dao.countVotes(proposalId))).to.deep.equal([
         0n,
-        0n,
         BigInt(voters.length),
-        0n,
         0n,
         stakeAmount * BigInt(voters.length)
       ]);
@@ -989,10 +984,8 @@ describe("DiamondDao contract", function () {
       await swithPhase(dao);
 
       const expectedVotesCount = [
-        0n,
         BigInt(votersYes.length),
         BigInt(votersNo.length),
-        0n,
         stakeAmount * BigInt(votersYes.length),
         stakeAmount * BigInt(votersNo.length),
       ];
@@ -1106,7 +1099,6 @@ describe("DiamondDao contract", function () {
       await swithPhase(dao);
 
       await vote(dao, proposalId, voters.slice(0, 10), Vote.Yes);
-      await vote(dao, proposalId, voters.slice(10, 12), Vote.Abstain);
       await vote(dao, proposalId, voters.slice(12), Vote.No);
 
       await swithPhase(dao);
@@ -1195,7 +1187,6 @@ describe("DiamondDao contract", function () {
       await addValidatorsStake(mockValidatorSet, mockStaking, voters);
 
       await swithPhase(dao);
-      await vote(dao, proposalId, voters, Vote.Abstain);
       await swithPhase(dao);
 
       expect(await dao.finalize(proposalId));
