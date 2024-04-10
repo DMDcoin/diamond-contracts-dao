@@ -67,9 +67,3 @@ struct ProposalStatistic {
     uint64 declined;
     uint64 canceled;
 }
-
-struct AllowedParams {
-    bool allowed;
-    string getter;
-    uint256[] params;
-}

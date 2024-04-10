@@ -9,6 +9,7 @@ import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/
 import { IDiamondDao } from "./interfaces/IDiamondDao.sol";
 import { IValidatorSetHbbft } from "./interfaces/IValidatorSetHbbft.sol";
 import { IStakingHbbft } from "./interfaces/IStakingHbbft.sol";
+import { ICoreValueGuard } from "./interfaces/ICoreValueGuard.sol";
 
 import {
     DaoPhase,
@@ -19,7 +20,6 @@ import {
     Vote,
     VoteRecord,
     VotingResult,
-    AllowedParams,
     ProposalType
 } from "./library/DaoStructs.sol"; // prettier-ignore
 
@@ -57,9 +57,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     /// @dev Proposal voting results mapping
     mapping(uint256 => VotingResult) public results;
 
-    /// @dev function selector => AllowedParams mapping
-    mapping(bytes4 => AllowedParams) public changeAbleParameters;
-
     /// @dev proposalId => (voter => vote) mapping
     mapping(uint256 => mapping(address => VoteRecord)) public votes;
 
@@ -93,23 +90,11 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         _;
     }
 
-    modifier onlyAllowedParams(address[] memory targets, bytes[] memory callDatas) {
+    modifier withinAllowedRange(address[] memory targets, bytes[] memory callDatas) {
         for (uint256 i = 0; i < targets.length; i++) {
             if (!isCoreContract[targets[i]]) continue;
             (bytes4 setFuncSelector, uint256 newVal) = _extractCallData(callDatas[i]);
-            AllowedParams memory allowedParams = changeAbleParameters[setFuncSelector];
-            if (!allowedParams.allowed) revert FunctionUpgradeNotAllowed(setFuncSelector, targets[i]);
-            uint256[] memory params = allowedParams.params;
-            uint256 currVal = _getCurrentValWithSelector(targets[i], allowedParams.getter);
-
-            for (uint256 j = 0; j < params.length; j++) {
-                if (params[j] == currVal) {
-                    uint256 leftVal = (j > 0) ? params[j - 1] : params[0];
-                    uint256 rightVal = (j < params.length - 1) ? params[j + 1] : params[params.length - 1];
-                    if (newVal != leftVal && newVal != rightVal) revert InvalidUpgradeValue(currVal, newVal);
-                    break;
-                }
-            }
+            require(ICoreValueGuard(targets[i]).isWithinAllowedRange(setFuncSelector, newVal), "new value not within allowed range");
         }
         _;
     }
@@ -175,20 +160,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         emit SetCreateProposalFee(_fee);
     }
 
-    function setChangeAbleParameters(
-        bool allowed,
-        string memory setter,
-        string memory getter,
-        uint256[] memory params
-    ) external onlyGovernance {
-        changeAbleParameters[bytes4(keccak256(bytes(setter)))] = AllowedParams(
-            allowed,
-            getter,
-            params
-        );
-        emit SetChangeAbleParameters(allowed, setter, getter, params);
-    }
-
     function setIsCoreContract(address _add, bool isCore) external onlyGovernance {
         isCoreContract[_add] = isCore;
         emit SetIsCoreContract(_add, isCore);
@@ -243,7 +214,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         string memory title,
         string memory description,
         string memory discussionUrl
-    ) external payable onlyPhase(Phase.Proposal) onlyAllowedParams(targets, calldatas) {
+    ) external payable onlyPhase(Phase.Proposal) withinAllowedRange(targets, calldatas) {
         if (
             targets.length != values.length ||
             targets.length != calldatas.length ||
