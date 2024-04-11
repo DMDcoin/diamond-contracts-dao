@@ -9,6 +9,16 @@
       "address": "0x152C51333E67571Ce3e952c6d747f07Cf379775C",
       "txHash": "0xfa6891fced5bc79dad7d7f70818a1a05e3fec0aef3051d774ffe54f901037c37",
       "kind": "transparent"
+    },
+    {
+      "address": "0xbEc4d0FF0AD610BFc67976e2f78789fC30F0Ca0A",
+      "txHash": "0x618d1affd2343e14f689e95410f215be3ecfc4a8489f283b9be6c8d74c63cc7c",
+      "kind": "transparent"
+    },
+    {
+      "address": "0x9dcdde144C78D830f7e65fE6583F3045dd9a40a6",
+      "txHash": "0xea04458718f685a811aadbd87c4a8e4878a8aab44a552c9fb80192331cb8cb44",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -490,6 +500,528 @@
             "numberOfBytes": "64"
           },
           "t_struct(VotingResult)3308_storage": {
+            "label": "struct VotingResult",
+            "members": [
+              {
+                "label": "countYes",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "countNo",
+                "type": "t_uint64",
+                "offset": 8,
+                "slot": "0"
+              },
+              {
+                "label": "stakeYes",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "stakeNo",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "5db22175b56de3b11fa7c2149625e163c289a904076fc72d7b8fadbfbe81aa88": {
+      "address": "0xfBD40fde1c6B81deaC6b6CA3F8405B36c0650E69",
+      "txHash": "0xef7a70d4b351871b7f315f9249dcae6c4d0295aa6c26e9f21dc9e221a8a4d866",
+      "layout": {
+        "solcVersion": "0.8.17",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:88"
+          },
+          {
+            "label": "daoPhaseCount",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_uint256",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:34"
+          },
+          {
+            "label": "reinsertPot",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_address",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:38"
+          },
+          {
+            "label": "createProposalFee",
+            "offset": 0,
+            "slot": "53",
+            "type": "t_uint256",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:39"
+          },
+          {
+            "label": "governancePot",
+            "offset": 0,
+            "slot": "54",
+            "type": "t_uint256",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:41"
+          },
+          {
+            "label": "validatorSet",
+            "offset": 0,
+            "slot": "55",
+            "type": "t_contract(IValidatorSetHbbft)3248",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:43"
+          },
+          {
+            "label": "stakingHbbft",
+            "offset": 0,
+            "slot": "56",
+            "type": "t_contract(IStakingHbbft)3224",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:44"
+          },
+          {
+            "label": "statistic",
+            "offset": 0,
+            "slot": "57",
+            "type": "t_struct(ProposalStatistic)3332_storage",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:45"
+          },
+          {
+            "label": "daoPhase",
+            "offset": 0,
+            "slot": "58",
+            "type": "t_struct(DaoPhase)3278_storage",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:47"
+          },
+          {
+            "label": "currentPhaseProposals",
+            "offset": 0,
+            "slot": "59",
+            "type": "t_array(t_uint256)dyn_storage",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:49"
+          },
+          {
+            "label": "proposals",
+            "offset": 0,
+            "slot": "60",
+            "type": "t_mapping(t_uint256,t_struct(Proposal)3323_storage)",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:52"
+          },
+          {
+            "label": "isCoreContract",
+            "offset": 0,
+            "slot": "61",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:55"
+          },
+          {
+            "label": "results",
+            "offset": 0,
+            "slot": "62",
+            "type": "t_mapping(t_uint256,t_struct(VotingResult)3295_storage)",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:58"
+          },
+          {
+            "label": "votes",
+            "offset": 0,
+            "slot": "63",
+            "type": "t_mapping(t_uint256,t_mapping(t_address,t_struct(VoteRecord)3286_storage))",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:61"
+          },
+          {
+            "label": "daoEpochStakeSnapshot",
+            "offset": 0,
+            "slot": "64",
+            "type": "t_mapping(t_uint256,t_mapping(t_address,t_uint256))",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:64"
+          },
+          {
+            "label": "_daoEpochVoters",
+            "offset": 0,
+            "slot": "65",
+            "type": "t_mapping(t_uint256,t_struct(AddressSet)909_storage)",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:67"
+          },
+          {
+            "label": "_proposalVoters",
+            "offset": 0,
+            "slot": "66",
+            "type": "t_mapping(t_uint256,t_struct(AddressSet)909_storage)",
+            "contract": "DiamondDaoTest",
+            "src": "contracts/DiamondDaoTest.sol:70"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_bytes32)dyn_storage": {
+            "label": "bytes32[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_bytes_storage)dyn_storage": {
+            "label": "bytes[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)dyn_storage": {
+            "label": "uint256[]",
+            "numberOfBytes": "32"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_bytes_storage": {
+            "label": "bytes",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IStakingHbbft)3224": {
+            "label": "contract IStakingHbbft",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IValidatorSetHbbft)3248": {
+            "label": "contract IValidatorSetHbbft",
+            "numberOfBytes": "20"
+          },
+          "t_enum(Phase)3264": {
+            "label": "enum Phase",
+            "members": [
+              "Proposal",
+              "Voting"
+            ],
+            "numberOfBytes": "1"
+          },
+          "t_enum(ProposalState)3258": {
+            "label": "enum ProposalState",
+            "members": [
+              "Created",
+              "Canceled",
+              "Active",
+              "VotingFinished",
+              "Accepted",
+              "Declined",
+              "Executed"
+            ],
+            "numberOfBytes": "1"
+          },
+          "t_enum(ProposalType)3268": {
+            "label": "enum ProposalType",
+            "members": [
+              "Open",
+              "ContractUpgrade",
+              "EcosystemParameterChange"
+            ],
+            "numberOfBytes": "1"
+          },
+          "t_enum(Vote)3261": {
+            "label": "enum Vote",
+            "members": [
+              "No",
+              "Yes"
+            ],
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(VoteRecord)3286_storage)": {
+            "label": "mapping(address => struct VoteRecord)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_uint256)": {
+            "label": "mapping(bytes32 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_mapping(t_address,t_struct(VoteRecord)3286_storage))": {
+            "label": "mapping(uint256 => mapping(address => struct VoteRecord))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(uint256 => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_struct(AddressSet)909_storage)": {
+            "label": "mapping(uint256 => struct EnumerableSetUpgradeable.AddressSet)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_struct(Proposal)3323_storage)": {
+            "label": "mapping(uint256 => struct Proposal)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_struct(VotingResult)3295_storage)": {
+            "label": "mapping(uint256 => struct VotingResult)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_struct(AddressSet)909_storage": {
+            "label": "struct EnumerableSetUpgradeable.AddressSet",
+            "members": [
+              {
+                "label": "_inner",
+                "type": "t_struct(Set)594_storage",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(DaoPhase)3278_storage": {
+            "label": "struct DaoPhase",
+            "members": [
+              {
+                "label": "start",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "end",
+                "type": "t_uint64",
+                "offset": 8,
+                "slot": "0"
+              },
+              {
+                "label": "daoEpoch",
+                "type": "t_uint64",
+                "offset": 16,
+                "slot": "0"
+              },
+              {
+                "label": "phase",
+                "type": "t_enum(Phase)3264",
+                "offset": 24,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(Proposal)3323_storage": {
+            "label": "struct Proposal",
+            "members": [
+              {
+                "label": "proposer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "votingDaoEpoch",
+                "type": "t_uint64",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "state",
+                "type": "t_enum(ProposalState)3258",
+                "offset": 28,
+                "slot": "0"
+              },
+              {
+                "label": "targets",
+                "type": "t_array(t_address)dyn_storage",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "values",
+                "type": "t_array(t_uint256)dyn_storage",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "calldatas",
+                "type": "t_array(t_bytes_storage)dyn_storage",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "title",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "description",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "5"
+              },
+              {
+                "label": "discussionUrl",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "6"
+              },
+              {
+                "label": "daoPhaseCount",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "7"
+              },
+              {
+                "label": "proposalType",
+                "type": "t_enum(ProposalType)3268",
+                "offset": 0,
+                "slot": "8"
+              }
+            ],
+            "numberOfBytes": "288"
+          },
+          "t_struct(ProposalStatistic)3332_storage": {
+            "label": "struct ProposalStatistic",
+            "members": [
+              {
+                "label": "total",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "accepted",
+                "type": "t_uint64",
+                "offset": 8,
+                "slot": "0"
+              },
+              {
+                "label": "declined",
+                "type": "t_uint64",
+                "offset": 16,
+                "slot": "0"
+              },
+              {
+                "label": "canceled",
+                "type": "t_uint64",
+                "offset": 24,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(Set)594_storage": {
+            "label": "struct EnumerableSetUpgradeable.Set",
+            "members": [
+              {
+                "label": "_values",
+                "type": "t_array(t_bytes32)dyn_storage",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_indexes",
+                "type": "t_mapping(t_bytes32,t_uint256)",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(VoteRecord)3286_storage": {
+            "label": "struct VoteRecord",
+            "members": [
+              {
+                "label": "timestamp",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "vote",
+                "type": "t_enum(Vote)3261",
+                "offset": 8,
+                "slot": "0"
+              },
+              {
+                "label": "reason",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(VotingResult)3295_storage": {
             "label": "struct VotingResult",
             "members": [
               {
