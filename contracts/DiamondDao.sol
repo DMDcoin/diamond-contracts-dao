@@ -411,7 +411,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
      * @param result The voting result containing the counts of "yes" and "no" votes.
      * @return A boolean indicating whether the quorum has been reached.
      */
-    function quorumReached(ProposalType _type, VotingResult memory result) public pure returns (bool) {
+    function quorumReached(ProposalType _type, VotingResult memory result) public view returns (bool) {
         uint256 requiredExceeding;
         uint256 totalDaoStake = _getTotalDaoStake();
 
@@ -569,7 +569,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         }
     }
 
-    function _getTotalDaoStake() private returns (uint256) {
+    function _getTotalDaoStake() private view returns (uint256) {
         // TODO: Get total staked amount from method instead of balance
         return address(stakingHbbft).balance;
     }
