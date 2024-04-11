@@ -534,9 +534,9 @@ contract DiamondDaoTest is IDiamondDao, Initializable, ReentrancyGuardUpgradeabl
         for (uint256 i = 0; i < calldatas.length; i++) {
             if (calldatas[i].length == 0) continue;
             if (isCoreContract[targets[i]]) {
-                return ProposalType.EcosystemParameterChange;
+                _type = ProposalType.EcosystemParameterChange;
             } else {
-                _type = ProposalType.ContractUpgrade;
+                return ProposalType.ContractUpgrade;
             }
         }
     }
