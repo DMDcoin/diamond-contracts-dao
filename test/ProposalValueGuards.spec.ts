@@ -8,6 +8,7 @@ import { DiamondDao, MockStakingHbbft, MockValidatorSetHbbft } from "../typechai
 const EmptyBytes = ethers.hexlify(new Uint8Array());
 
 enum Vote {
+  Abstain,
   No,
   Yes
 }
