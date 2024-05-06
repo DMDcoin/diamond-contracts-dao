@@ -543,6 +543,6 @@ contract DiamondDaoTest is IDiamondDao, Initializable, ReentrancyGuardUpgradeabl
 
     function _getTotalDaoStake() private view returns (uint256) {
         // TODO: Get total staked amount from method instead of balance
-        return address(stakingHbbft).balance;
+        return stakingHbbft.totalStakedAmount();
     }
 }
