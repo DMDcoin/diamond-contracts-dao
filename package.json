@@ -6,14 +6,13 @@
     "compile": "npx hardhat compile --force",
     "test": "npx hardhat test --show-stack-traces",
     "clean": "rm -rf artifacts/ cache/ coverage/ typechain/ typechain-types/ coverage.json",
-    "coverage": "npx hardhat coverage --show-stack-traces --config ./hardhat-coverage.config.ts --solcoverjs ./.solcover.js",
-    "coverage2": "export SOLIDITY_COVERAGE=true && npx hardhat coverage"
+    "coverage": "npx hardhat coverage --show-stack-traces --config ./hardhat-coverage.config.ts --solcoverjs ./.solcover.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/DMDcoin/diamond-contracts-dao.git"
   },
-  "author": "",
+  "author": "", 
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/DMDcoin/diamond-contracts-dao/issues"
