@@ -2,7 +2,6 @@ node_modules/
 cache/
 artifacts/
 .mnemonic
-./contracts/DiamondDaoTest.sol
 
 # Logs
 logs/
