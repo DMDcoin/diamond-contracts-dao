@@ -22,7 +22,8 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^3.0.0",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "@openzeppelin/contracts-upgradeable": "^5.0.2",
+    "@openzeppelin/contracts-upgradeable": "^4.9.6",
+    "@openzeppelin/hardhat-upgrades": "^3.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.3"
   },

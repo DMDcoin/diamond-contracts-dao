@@ -3,10 +3,7 @@ import fs from "fs";
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
-// import "@openzeppelin/hardhat-upgrades";
-// import "hardhat-contract-sizer";
-// import "hardhat-tracer";
-// import "solidity-coverage";
+import "@openzeppelin/hardhat-upgrades";
 
 
 let mnemonic = 'inspire school random normal account steel strike shove close album produce cube bounce memory before';
