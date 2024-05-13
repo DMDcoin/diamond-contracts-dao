@@ -91,7 +91,9 @@ describe("DAO proposal execution", function () {
       _targets,
       _values,
       _calldatas,
+      "title",
       _description,
+      "url",
       { value: createProposalFee }
     );
 
@@ -266,7 +268,7 @@ describe("DAO proposal execution", function () {
       await expect(dao.execute(proposalId)).to.be.revertedWith("low-level call failed");
     });
 
-    it("should transfer funds from governance pot", async function () {
+    it("should transfer funds from governance pot and confirm Open proposalType", async function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
       const fundsRequest = governancePotValue;
@@ -281,6 +283,8 @@ describe("DAO proposal execution", function () {
         [fundsRequest],
         [EmptyBytes]
       );
+
+      expect((await dao.getProposal(proposalId)).proposalType).to.equal(0);
 
       await expect(dao.execute(proposalId))
         .to.changeEtherBalances(

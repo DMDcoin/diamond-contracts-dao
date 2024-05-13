@@ -27,13 +27,13 @@ import {
 /// - Manages the DAO funds.
 /// - Is able to upgrade all diamond-contracts-core contracts, including itself.
 /// - Is able to vote for chain settings.
-contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
+contract DiamondDaoTest is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
 
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
     uint256 public daoPhaseCount;
     uint256 public constant MAX_NEW_PROPOSALS = 100;
-    uint64 public constant DAO_PHASE_DURATION = 14 days;
+    uint64 public constant DAO_PHASE_DURATION = 1 hours;
 
     address public reinsertPot;
     uint256 public createProposalFee;
@@ -166,13 +166,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     }
 
     function switchPhase() external {
-        if (block.timestamp < daoPhase.end) {
-            return;
-        }
-
         Phase newPhase = daoPhase.phase == Phase.Proposal ? Phase.Voting : Phase.Proposal;
 
-        uint64 newPhaseStart = daoPhase.end + 1;
+        uint64 newPhaseStart = uint64(block.timestamp) + 1;
         daoPhase.start = newPhaseStart;
         daoPhase.end = newPhaseStart + DAO_PHASE_DURATION;
         daoPhase.phase = newPhase;
@@ -278,7 +274,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     function vote(
         uint256 proposalId,
         Vote _vote
-    ) external exists(proposalId) onlyPhase(Phase.Voting) onlyValidator {
+    ) external exists(proposalId) onlyPhase(Phase.Voting) {
         address voter = msg.sender;
 
         // Proposal must have Active state, checked in _submitVote
@@ -291,7 +287,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         uint256 proposalId,
         Vote _vote,
         string calldata reason
-    ) external exists(proposalId) onlyPhase(Phase.Voting) onlyValidator {
+    ) external exists(proposalId) onlyPhase(Phase.Voting) {
         address voter = msg.sender;
 
         // Proposal must have Active state, checked in _submitVote
@@ -405,12 +401,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         return result;
     }
 
-    /**
-     * @dev Checks if the quorum has been reached for a given proposal type and voting result.
-     * @param _type The type of the proposal.
-     * @param result The voting result containing the counts of "yes" and "no" votes.
-     * @return A boolean indicating whether the quorum has been reached.
-     */
     function quorumReached(ProposalType _type, VotingResult memory result) public view returns (bool) {
         uint256 requiredExceeding;
         uint256 totalDaoStake = _getTotalDaoStake();
@@ -421,7 +411,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
             requiredExceeding = totalDaoStake * (33 * 100) / 10000;
         }
 
-        return result.stakeYes >= result.stakeNo + requiredExceeding;
+        return result.countYes >= (result.countNo + requiredExceeding);
     }
 
     function hashProposal(
@@ -513,18 +503,12 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
             miningAddress != address(0) && validatorSet.validatorAvailableSince(miningAddress) != 0;
     }
 
-    /**
-     * @dev Retrieves the current value from a contract using the provided function selector.
-     * @param contractAddress The address of the contract to call.
-     * @param funcSelector The function selector to use for the call.
-     * @return The current value returned by the contract.
-     */
     function _getCurrentValWithSelector(address contractAddress, string memory funcSelector) private view returns(uint256) {
         bytes memory selectorBytes = abi.encodeWithSelector(bytes4(keccak256(bytes(funcSelector))));
 
         (bool success, bytes memory data) = contractAddress.staticcall(selectorBytes);
         if (!success) revert ContractCallFailed(selectorBytes, contractAddress);
-
+ 
         uint256 result;
         assembly {
             result := mload(add(data, 0x20))
@@ -532,12 +516,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         return result;
     }
 
-    /**
-     * @dev Extracts the function selector and value from the given call data.
-     * @param _data The call data to extract from.
-     * @return funcSelector The function selector extracted from the call data.
-     * @return value The value extracted from the call data (assuming it's uint256).
-     */
     function _extractCallData(bytes memory _data) private pure returns (bytes4 funcSelector, uint256 value) {
         // Extract function selector
         assembly {
@@ -550,12 +528,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         }
     }
 
-    /**
-     * @dev Returns the type of proposal based on the given targets and calldatas.
-     * @param targets The array of target addresses.
-     * @param calldatas The array of calldata bytes.
-     * @return _type The type of proposal (Open, EcosystemParameterChange, or ContractUpgrade).
-     */
     function _getProposalType(address[] memory targets, bytes[] memory calldatas) private view returns (ProposalType _type) {
         _type = ProposalType.Open;
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity =0.8.17;
+pragma solidity =0.8.25;
 
 import { Phase, Proposal, ProposalState, Vote } from "../library/DaoStructs.sol";
 
@@ -10,7 +10,9 @@ interface IDiamondDao {
         address[] targets,
         uint256[] values,
         bytes[] calldatas,
-        string description
+        string title,
+        string description,
+        string discussionUrl
     );
 
     event ProposalCanceled(address indexed proposer, uint256 indexed proposalId, string reason);
@@ -32,6 +34,10 @@ interface IDiamondDao {
 
     event SetCreateProposalFee(uint256 fee);
 
+    event SetIsCoreContract(address contractAddress, bool isCore);
+
+    event SetChangeAbleParameters(bool allowed, string setter, string getter, uint256[] params);
+
     error InsufficientFunds();
     error InvalidArgument();
     error InvalidStartTimestamp();
@@ -44,12 +50,17 @@ interface IDiamondDao {
     error TransferFailed(address from, address to, uint256 amount);
     error UnavailableInCurrentPhase(Phase phase);
     error UnexpectedProposalState(uint256 proposalId, ProposalState state);
+    error ContractCallFailed(bytes funcSelector, address targetContract);
+    error FunctionUpgradeNotAllowed(bytes4 funcSelector, address targetContract);
+    error InvalidUpgradeValue(uint256 currentVal, uint256 newVal);
 
     function propose(
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
-        string memory description
+        string memory title,
+        string memory description,
+        string memory discussionUrl
     ) external payable;
 
     function cancel(uint256 proposalId, string calldata reason) external;
