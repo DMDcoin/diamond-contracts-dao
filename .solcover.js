@@ -1,4 +1,4 @@
 module.exports = {
   configureYulOptimizer: true,
-  skipFiles: ["mocks/", "interfaces/"]
+  skipFiles: ["mocks/", "interfaces/", "DiamondDaoTest.sol"]
 };

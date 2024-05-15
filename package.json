@@ -12,19 +12,22 @@
     "type": "git",
     "url": "git+https://github.com/DMDcoin/diamond-contracts-dao.git"
   },
-  "author": "", 
+  "author": "",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/DMDcoin/diamond-contracts-dao/issues"
   },
   "homepage": "https://github.com/DMDcoin/diamond-contracts-dao#readme",
   "devDependencies": {
-    "@nomicfoundation/hardhat-ethers": "^3.0.0",
+    "@nomicfoundation/hardhat-ethers": "^3.0.6",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "@openzeppelin/contracts-upgradeable": "^4.9.6",
+    "@openzeppelin/contracts": "^5.0.2",
+    "@openzeppelin/contracts-upgradeable": "^5.0.2",
     "@openzeppelin/hardhat-upgrades": "^3.1.0",
+    "hardhat-contract-sizer": "^2.10.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.3"
+    "typescript": "^5.4.5",
+    "typechain": "^8.1.0"
   },
   "prettier": "./.prettierrc.json"
 }

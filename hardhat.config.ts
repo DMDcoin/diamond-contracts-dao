@@ -4,6 +4,7 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@openzeppelin/hardhat-upgrades";
+import "hardhat-contract-sizer";
 
 
 let mnemonic = 'inspire school random normal account steel strike shove close album produce cube bounce memory before';
@@ -54,7 +55,8 @@ const config: HardhatUserConfig = {
     alphaSort: true,
     runOnCompile: true,
     disambiguatePaths: false,
-    only: [":DiamondDao"],
+    only: ["DiamondDao"],
+    except: ["DiamondDaoTest"]
   },
   paths: {
     artifacts: "./artifacts",

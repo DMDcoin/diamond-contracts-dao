@@ -1,7 +1,9 @@
+import hre from "hardhat";
 import { ethers, upgrades } from "hardhat";
 import { expect } from "chai";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
+import { attachProxyAdminV5 } from "@openzeppelin/hardhat-upgrades/dist/utils";
 
 import { DiamondDao, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
 
@@ -168,8 +170,7 @@ describe("DAO proposal execution", function () {
     it("should not allow to set createProposalFee = 0", async function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
-      const funcFragment = dao.interface.getFunction("setCreateProposalFee");
-      const calldata = dao.interface.encodeFunctionData(funcFragment, [0n]);
+      const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [0n]);
 
       const { proposalId } = await finalizedProposal(
         dao,
@@ -188,8 +189,7 @@ describe("DAO proposal execution", function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
       const newFeeValue = ethers.parseEther('111');
-      const funcFragment = dao.interface.getFunction("setCreateProposalFee");
-      const calldata = dao.interface.encodeFunctionData(funcFragment, [newFeeValue]);
+      const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [newFeeValue]);
 
       const { proposalId } = await finalizedProposal(
         dao,
@@ -211,41 +211,46 @@ describe("DAO proposal execution", function () {
 
   describe("self upgrade", async function () {
     it("should perform DAO self upgrade", async function () {
-      // const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
-      // const daoAddress = await dao.getAddress();
+      const daoAddress = await dao.getAddress();
       // const proxyAdmin = await upgrades.admin.getInstance();
 
-      // await proxyAdmin.transferOwnership(daoAddress);
-      // expect(await proxyAdmin.owner()).to.equal(daoAddress);
+      const proxyAdmin = await attachProxyAdminV5(
+        hre,
+        await upgrades.erc1967.getAdminAddress(daoAddress)
+      );
 
-      // const factory = await ethers.getContractFactory("DiamondDao");
-      // const newImplementation = await upgrades.deployImplementation(factory);
+      await proxyAdmin.transferOwnership(daoAddress);
+      expect(await proxyAdmin.owner()).to.equal(daoAddress);
 
-      // expect(daoAddress).to.not.equal(newImplementation);
+      const factory = await ethers.getContractFactory("DiamondDao");
+      const newImplementation = await upgrades.deployImplementation(factory);
 
-      // const upgradeFunc = proxyAdmin.interface.getFunction("upgrade");
-      // const calldata = proxyAdmin.interface.encodeFunctionData(upgradeFunc!, [
-      //   daoAddress,
-      //   newImplementation
-      // ]);
+      expect(daoAddress).to.not.equal(newImplementation);
 
-      // const { proposalId } = await finalizedProposal(
-      //   dao,
-      //   mockValidatorSet,
-      //   mockStaking,
-      //   Vote.Yes,
-      //   [await proxyAdmin.getAddress()],
-      //   [0n],
-      //   [calldata]
-      // );
+      const calldata = proxyAdmin.interface.encodeFunctionData("upgradeAndCall", [
+        daoAddress,
+        newImplementation,
+        EmptyBytes,
+      ]);
 
-      // await expect(dao.execute(proposalId))
-      //   .to.emit(dao, "ProposalExecuted")
-      //   .withArgs(users[0].address, proposalId);
+      const { proposalId } = await finalizedProposal(
+        dao,
+        mockValidatorSet,
+        mockStaking,
+        Vote.Yes,
+        [await proxyAdmin.getAddress()],
+        [0n],
+        [calldata]
+      );
 
-      // expect(await upgrades.erc1967.getImplementationAddress(daoAddress)).to.equal(newImplementation);
-    }).skip();
+      await expect(dao.execute(proposalId))
+        .to.emit(dao, "ProposalExecuted")
+        .withArgs(users[0].address, proposalId);
+
+      expect(await upgrades.erc1967.getImplementationAddress(daoAddress)).to.equal(newImplementation);
+    });
   });
 
   describe("funds transfer from governance pot", async function () {
@@ -265,7 +270,7 @@ describe("DAO proposal execution", function () {
         [EmptyBytes]
       );
 
-      await expect(dao.execute(proposalId)).to.be.revertedWith("low-level call failed");
+      await expect(dao.execute(proposalId)).to.be.revertedWithCustomError(dao, "FailedInnerCall");
     });
 
     it("should transfer funds from governance pot and confirm Open proposalType", async function () {
@@ -315,7 +320,7 @@ describe("DAO proposal execution", function () {
 
       await attacker.setId(proposalId);
 
-      await expect(attacker.attack()).to.be.revertedWith("ReentrancyGuard: reentrant call");
+      await expect(attacker.attack()).to.be.revertedWithCustomError(dao, "ReentrancyGuardReentrantCall");
     });
   });
 });
