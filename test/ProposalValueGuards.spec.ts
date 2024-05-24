@@ -14,19 +14,19 @@ enum Vote {
 }
 
 export function getRandomBigInt(): bigint {
-    let hex = "0x" + Buffer.from(ethers.randomBytes(16)).toString("hex");
-  
-    return BigInt(hex);
-  }
-  
+  let hex = "0x" + Buffer.from(ethers.randomBytes(16)).toString("hex");
+
+  return BigInt(hex);
+}
+
 
 describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
   let users: HardhatEthersSigner[];
   let reinsertPot: HardhatEthersSigner;
 
-  let dao: any;
-  let mockValidatorSet: any;
-  let mockStaking: any;
+  let dao: DiamondDao;
+  let mockValidatorSet: MockValidatorSetHbbft;
+  let mockStaking: MockStakingHbbft;
 
   const createProposalFee = ethers.parseEther("10");
   const governancePotValue = ethers.parseEther('500');
@@ -173,35 +173,33 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
 
   describe("proposal Value Guards", async function () {
     it("should set staking contract as isCoreContract", async function () {
-        const funcFragment = dao.interface.getFunction("setIsCoreContract");
-        const calldata = dao.interface.encodeFunctionData(funcFragment, [await mockStaking.getAddress(), true]);
-  
-        const { proposalId } = await finalizedProposal(
-          dao,
-          mockValidatorSet,
-          mockStaking,
-          Vote.Yes,
-          [await dao.getAddress()],
-          [0n],
-          [calldata]
-        );
-  
-        await expect(dao.execute(proposalId)).to.emit(dao, "SetIsCoreContract").withArgs(await mockStaking.getAddress(), true);
+      const calldata = dao.interface.encodeFunctionData("setIsCoreContract", [await mockStaking.getAddress(), true]);
+
+      const { proposalId } = await finalizedProposal(
+        dao,
+        mockValidatorSet,
+        mockStaking,
+        Vote.Yes,
+        [await dao.getAddress()],
+        [0n],
+        [calldata]
+      );
+
+      await expect(dao.execute(proposalId)).to.emit(dao, "SetIsCoreContract").withArgs(await mockStaking.getAddress(), true);
     });
 
     it("should fail to propose ecosystem parameter change as not allowed", async function () {
-        const proposer = users[2];
-        const funcFragment = mockStaking.interface.getFunction("setDelegatorMinStake");
-        const calldata = mockStaking.interface.encodeFunctionData(funcFragment, ['50000000000000000000']);
-  
-        const targets = [await mockStaking.getAddress()];
-        const values = [0n];
-        const calldatas = [calldata];
-        const description = "test";
-  
-        await expect(
-          dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
-        ).to.be.rejectedWith(dao, "new value not within allowed range");
+      const proposer = users[2];
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['50000000000000000000']);
+
+      const targets = [await mockStaking.getAddress()];
+      const values = [0n];
+      const calldatas = [calldata];
+      const description = "test";
+
+      await expect(
+        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+      ).to.be.revertedWithCustomError(dao, "OutOfAllowedRange");
     });
 
     it("should set setChangeAbleParameters", async function () {
@@ -227,24 +225,22 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
     });
 
     it("should fail to propose ecosystem parameter change as invalid upgrade value", async function () {
-        const proposer = users[2];
-        const funcFragment = mockStaking.interface.getFunction("setDelegatorMinStake");
-        const calldata = mockStaking.interface.encodeFunctionData(funcFragment, ['200000000000000000000']);
-  
-        const targets = [await mockStaking.getAddress()];
-        const values = [0n];
-        const calldatas = [calldata];
-        const description = "test";
-  
-        await expect(
-          dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
-        ).to.be.rejectedWith(dao, "new value not within allowed range");
-      });
+      const proposer = users[2];
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['200000000000000000000']);
+
+      const targets = [await mockStaking.getAddress()];
+      const values = [0n];
+      const calldatas = [calldata];
+      const description = "test";
+
+      await expect(
+        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+      ).to.be.revertedWithCustomError(dao, "OutOfAllowedRange");
+    });
 
     it("should successfully propose ecosystem parameter change increment", async function () {
       const proposer = users[2];
-      const funcFragment = mockStaking.interface.getFunction("setDelegatorMinStake");
-      const calldata = mockStaking.interface.encodeFunctionData(funcFragment, ['150000000000000000000']);
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['150000000000000000000']);
 
       const targets = [await mockStaking.getAddress()];
       const values = [0n];
@@ -274,43 +270,41 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
     });
 
     it("should successfully propose ecosystem parameter change decrement and confirm proposalType", async function () {
-        const proposer = users[2];
-        const funcFragment = mockStaking.interface.getFunction("setDelegatorMinStake");
-        const calldata = mockStaking.interface.encodeFunctionData(funcFragment, ['50000000000000000000']);
-  
-        const targets = [await mockStaking.getAddress()];
-        const values = [0n];
-        const calldatas = [calldata];
-        const description = "test";
-  
-        const proposalId = await dao.hashProposal(
+      const proposer = users[2];
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['50000000000000000000']);
+
+      const targets = [await mockStaking.getAddress()];
+      const values = [0n];
+      const calldatas = [calldata];
+      const description = "test";
+
+      const proposalId = await dao.hashProposal(
+        targets,
+        values,
+        calldatas,
+        description
+      );
+
+      await expect(
+        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+      ).to.emit(dao, "ProposalCreated")
+        .withArgs(
+          proposer.address,
+          proposalId,
           targets,
           values,
           calldatas,
-          description
+          "title",
+          description,
+          "url"
         );
-  
-        await expect(
-          dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
-        ).to.emit(dao, "ProposalCreated")
-          .withArgs(
-            proposer.address,
-            proposalId,
-            targets,
-            values,
-            calldatas,
-            "title",
-            description,
-            "url"
-          );
 
-        expect((await dao.getProposal(proposalId)).proposalType).to.equal(2);
+      expect((await dao.getProposal(proposalId)).proposalType).to.equal(2);
     });
 
     it("should successfully propose contract upgrade and confirm proposalType", async function () {
       const proposer = users[2];
-      const funcFragment = mockValidatorSet.interface.getFunction("validatorAvailableSince");
-      const calldata = mockValidatorSet.interface.encodeFunctionData(funcFragment, [await mockValidatorSet.getAddress()]);
+      const calldata = mockValidatorSet.interface.encodeFunctionData("validatorAvailableSince", [await mockValidatorSet.getAddress()]);
 
       const targets = [await mockValidatorSet.getAddress()];
       const values = [0n];
@@ -339,6 +333,6 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
         );
 
       expect((await dao.getProposal(proposalId)).proposalType).to.equal(1);
-  });
+    });
   });
 });

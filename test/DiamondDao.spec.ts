@@ -251,7 +251,7 @@ describe("DiamondDao contract", function () {
           createProposalFee,
           startTime + 1
         )
-      ).to.be.revertedWith("Initializable: contract is already initialized");
+      ).to.be.revertedWithCustomError(dao, "InvalidInitialization");
     });
   });
 

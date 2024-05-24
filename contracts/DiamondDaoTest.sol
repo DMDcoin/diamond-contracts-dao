@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.25;
 
+import { Address } from '@openzeppelin/contracts/utils/Address.sol';
+import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { AddressUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
-import { EnumerableSetUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
-import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 import { IDiamondDao } from "./interfaces/IDiamondDao.sol";
 import { IValidatorSetHbbft } from "./interfaces/IValidatorSetHbbft.sol";
@@ -28,7 +28,7 @@ import {
 /// - Is able to upgrade all diamond-contracts-core contracts, including itself.
 /// - Is able to vote for chain settings.
 contract DiamondDaoTest is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
-    using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
     uint256 public daoPhaseCount;
@@ -64,10 +64,10 @@ contract DiamondDaoTest is IDiamondDao, Initializable, ReentrancyGuardUpgradeabl
     mapping(uint256 => mapping(address => uint256)) public daoEpochStakeSnapshot;
 
     /// @dev daoEpoch => voters[] - specific DAO epoch voters (all proposals)
-    mapping(uint256 => EnumerableSetUpgradeable.AddressSet) private _daoEpochVoters;
+    mapping(uint256 => EnumerableSet.AddressSet) private _daoEpochVoters;
 
     /// @dev proposal Id => voters[] - specific proposal voters
-    mapping(uint256 => EnumerableSetUpgradeable.AddressSet) private _proposalVoters;
+    mapping(uint256 => EnumerableSet.AddressSet) private _proposalVoters;
 
     modifier exists(uint256 proposalId) {
         if (!proposalExists(proposalId)) {
@@ -91,10 +91,16 @@ contract DiamondDaoTest is IDiamondDao, Initializable, ReentrancyGuardUpgradeabl
     }
 
     modifier withinAllowedRange(address[] memory targets, bytes[] memory callDatas) {
-        for (uint256 i = 0; i < targets.length; i++) {
-            if (!isCoreContract[targets[i]]) continue;
+        for (uint256 i = 0; i < targets.length; ++i) {
+            if (!isCoreContract[targets[i]]) {
+                continue;
+            }
+
             (bytes4 setFuncSelector, uint256 newVal) = _extractCallData(callDatas[i]);
-            require(ICoreValueGuard(targets[i]).isWithinAllowedRange(setFuncSelector, newVal), "new value not within allowed range");
+
+            if (!ICoreValueGuard(targets[i]).isWithinAllowedRange(setFuncSelector, newVal)) {
+                revert ICoreValueGuard.OutOfAllowedRange();
+            }
         }
         _;
     }
@@ -472,7 +478,8 @@ contract DiamondDaoTest is IDiamondDao, Initializable, ReentrancyGuardUpgradeabl
             (bool success, bytes memory returndata) = targets[i].call{ value: values[i] }(
                 calldatas[i]
             );
-            AddressUpgradeable.verifyCallResult(success, returndata, "low-level call failed");
+
+            Address.verifyCallResult(success, returndata);
 
             if (values[i] != 0) {
                 governancePot -= values[i];

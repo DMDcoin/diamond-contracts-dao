@@ -24,11 +24,10 @@ enum ProposalState {
 }
 
 export function getRandomBigInt(): bigint {
-    let hex = "0x" + Buffer.from(ethers.randomBytes(16)).toString("hex");
-  
-    return BigInt(hex);
-  }
-  
+  let hex = "0x" + Buffer.from(ethers.randomBytes(16)).toString("hex");
+
+  return BigInt(hex);
+}
 
 describe("Proposal Acceptance Threshold", function () {
   let users: HardhatEthersSigner[];
@@ -417,8 +416,7 @@ describe("Proposal Acceptance Threshold", function () {
         ethers.parseEther('150000')
       );
 
-      const funcFragment = mockStaking.interface.getFunction("setDelegatorMinStake");
-      const calldata = mockStaking.interface.encodeFunctionData(funcFragment, ['50000000000000000000']);
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['50000000000000000000']);
 
       const targets = [await mockStaking.getAddress()];
       const values = [0n];
@@ -488,8 +486,7 @@ describe("Proposal Acceptance Threshold", function () {
         ethers.parseEther('150000')
       );
 
-      const funcFragment = mockStaking.interface.getFunction("setDelegatorMinStake");
-      const calldata = mockStaking.interface.encodeFunctionData(funcFragment, ['50000000000000000000']);
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['50000000000000000000']);
 
       const targets = [await mockStaking.getAddress()];
       const values = [0n];
