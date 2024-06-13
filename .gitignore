@@ -3,6 +3,9 @@ cache/
 artifacts/
 .mnemonic
 
+# diamond-contracts-dao specific
+out/
+
 # Logs
 logs/
 *.log
