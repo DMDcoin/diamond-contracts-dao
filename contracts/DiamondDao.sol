@@ -32,7 +32,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
 
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
     uint256 public daoPhaseCount;
-    uint256 public constant MAX_NEW_PROPOSALS = 100;
+    uint256 public constant MAX_NEW_PROPOSALS = 1000;
     uint64 public constant DAO_PHASE_DURATION = 14 days;
 
     address public reinsertPot;
