@@ -484,7 +484,7 @@ describe("DiamondDao contract", function () {
     it("should revert propose if limit was reached", async function () {
       const { dao } = await loadFixture(deployFixture);
 
-      for (let i = 0; i < 100; ++i) {
+      for (let i = 0; i < 1000; ++i) {
         expect(await createProposal(dao, users[1], `proposal ${i}`));
       }
 
