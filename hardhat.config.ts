@@ -71,6 +71,14 @@ const config: HardhatUserConfig = {
     apiKey: "123",
     customChains: [
       {
+        network: "alpha3",
+        chainId: 777016,
+        urls: {
+          apiURL: "https://explorer.uniq.diamonds/api",
+          browserURL: "https://explorer.uniq.diamonds",
+        },
+      },
+      {
         network: "dmd",
         chainId: 777012,
         urls: {
