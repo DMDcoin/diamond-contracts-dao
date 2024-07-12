@@ -55,8 +55,7 @@ const config: HardhatUserConfig = {
     alphaSort: true,
     runOnCompile: true,
     disambiguatePaths: false,
-    only: ["DiamondDao"],
-    except: ["DiamondDaoTest"]
+    only: ["DiamondDao"]
   },
   paths: {
     artifacts: "./artifacts",
@@ -70,6 +69,14 @@ const config: HardhatUserConfig = {
   etherscan: {
     apiKey: "123",
     customChains: [
+      {
+        network: "alpha3",
+        chainId: 777016,
+        urls: {
+          apiURL: "https://explorer.uniq.diamonds/api",
+          browserURL: "https://explorer.uniq.diamonds",
+        },
+      },
       {
         network: "dmd",
         chainId: 777012,

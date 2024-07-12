@@ -12,7 +12,7 @@ async function deploy() {
   console.log("Deploying from: ", deployer.address);
   console.log("Deploying DiamondDao contract");
 
-  const dao = await deployProxy("DiamondDaoTest", [
+  const dao = await deployProxy("DiamondDao", [
     "0x1000000000000000000000000000000000000001", // ValidatorSetHbbf
     "0x1100000000000000000000000000000000000001", // StakingHbbft
     "0x2000000000000000000000000000000000000001", // _reinsertPot
