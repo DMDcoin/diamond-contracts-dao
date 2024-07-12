@@ -55,8 +55,7 @@ const config: HardhatUserConfig = {
     alphaSort: true,
     runOnCompile: true,
     disambiguatePaths: false,
-    only: ["DiamondDao"],
-    except: ["DiamondDaoTest"]
+    only: ["DiamondDao"]
   },
   paths: {
     artifacts: "./artifacts",
