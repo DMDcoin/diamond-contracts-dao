@@ -53,6 +53,7 @@ interface IDiamondDao {
     error ContractCallFailed(bytes funcSelector, address targetContract);
     error FunctionUpgradeNotAllowed(bytes4 funcSelector, address targetContract);
     error InvalidUpgradeValue(uint256 currentVal, uint256 newVal);
+    error UnfinalizedProposalsExist();
 
     function propose(
         address[] memory targets,

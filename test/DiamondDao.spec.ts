@@ -501,6 +501,26 @@ describe("DiamondDao contract", function () {
       ).to.be.revertedWithCustomError(dao, "NewProposalsLimitExceeded");
     });
 
+    it("should revert propose if there are unfinalized proposals in previous phases", async function () {
+      const { dao } = await loadFixture(deployFixture);
+
+      const proposer = users[2];
+
+      const targets = [users[3].address];
+      const values = [ethers.parseEther("1")];
+      const calldatas = [EmptyBytes];
+      const description = "test";
+
+      await createProposal(dao, proposer);
+
+      await swithPhase(dao);
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+      ).to.be.revertedWithCustomError(dao, "UnfinalizedProposalsExist");
+    });
+
     it("should create proposal and transfer fee to reinsert pot", async function () {
       const { dao } = await loadFixture(deployFixture);
 
@@ -724,6 +744,24 @@ describe("DiamondDao contract", function () {
 
       const { proposalId } = await createProposal(dao, proposer, "a");
 
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(voter).vote(proposalId, Vote.Yes)
+      ).to.be.revertedWithCustomError(dao, "OnlyValidators")
+        .withArgs(voter.address);
+    });
+
+    it("should revert vote by banned validator", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await mockValidatorSet.add(voter.address, voter.address, false);
+      await mockValidatorSet.addBanned(voter.address, Math.floor(new Date().getTime() / 1000) + 1000000);
       await swithPhase(dao);
 
       await expect(

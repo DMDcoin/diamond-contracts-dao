@@ -27,13 +27,13 @@ import {
 /// - Manages the DAO funds.
 /// - Is able to upgrade all diamond-contracts-core contracts, including itself.
 /// - Is able to vote for chain settings.
-contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
+contract DiamondDaoTest is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
     uint256 public daoPhaseCount;
-    uint256 public constant MAX_NEW_PROPOSALS = 1000;
-    uint64 public constant DAO_PHASE_DURATION = 2 hours;
+    uint256 public constant MAX_NEW_PROPOSALS = 100;
+    uint64 public constant DAO_PHASE_DURATION = 1 hours;
 
     address public reinsertPot;
     uint256 public createProposalFee;
@@ -185,7 +185,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
 
         Phase newPhase = daoPhase.phase == Phase.Proposal ? Phase.Voting : Phase.Proposal;
 
-        uint64 newPhaseStart = daoPhase.end + 1;
+        uint64 newPhaseStart = uint64(block.timestamp) + 1;
         daoPhase.start = newPhaseStart;
         daoPhase.end = newPhaseStart + DAO_PHASE_DURATION;
         daoPhase.phase = newPhase;
