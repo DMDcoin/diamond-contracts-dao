@@ -6,6 +6,8 @@ interface IValidatorSetHbbft {
 
     function isValidatorBanned(address) external view returns (bool);
 
+    function isValidatorOrPending(address) external view returns (bool);
+
     function miningByStakingAddress(address) external view returns (address);
 
     function validatorAvailableSince(address) external view returns (uint256);

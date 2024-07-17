@@ -54,4 +54,8 @@ contract MockValidatorSetHbbft is IValidatorSetHbbft {
     function isValidatorBanned(address _miningAddress) public view returns (bool) {
         return block.timestamp <= bannedUntil[_miningAddress];
     }
+
+    function isValidatorOrPending(address _miningAddress) public view returns (bool) {
+        return _isValidator[_miningAddress];
+    }
 }

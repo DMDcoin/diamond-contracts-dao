@@ -70,7 +70,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     mapping(uint256 => EnumerableSet.AddressSet) private _proposalVoters;
 
     /// @dev Count of unfinalized proposals
-    uint256 unfinalizedProposals;
+    uint256 public unfinalizedProposals;
 
     /// @dev To keep track of the last DAO phase count for unfinalized proposals check
     uint256 public lastDaoPhaseCount;
@@ -118,6 +118,15 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         _;
     }
 
+    modifier noUnfinalizedProposals() {
+        if (unfinalizedProposalsExist()) {
+            revert UnfinalizedProposalsExist();
+        } else if (lastDaoPhaseCount != daoPhaseCount) {
+            lastDaoPhaseCount = daoPhaseCount;
+        }
+        _;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         // Prevents initialization of implementation contract
@@ -160,7 +169,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         daoPhase.phase = Phase.Proposal;
         daoPhase.daoEpoch = 1;
         daoPhaseCount = 1;
-    }
+     }
 
     function setCreateProposalFee(uint256 _fee) external onlyGovernance {
         if (_fee == 0) {
@@ -227,14 +236,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         string memory title,
         string memory description,
         string memory discussionUrl
-    ) external payable onlyPhase(Phase.Proposal) withinAllowedRange(targets, calldatas) {
-        if (lastDaoPhaseCount != daoPhaseCount) {
-            if (unfinalizedProposals > 0) {
-                revert UnfinalizedProposalsExist();
-            }
-            lastDaoPhaseCount = daoPhaseCount;
-        }
-
+    ) external payable onlyPhase(Phase.Proposal) withinAllowedRange(targets, calldatas) noUnfinalizedProposals {
         if (
             targets.length != values.length ||
             targets.length != calldatas.length ||
@@ -458,6 +460,13 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         return uint256(keccak256(abi.encode(targets, values, calldatas, descriptionHash)));
     }
 
+    function unfinalizedProposalsExist() public view returns (bool) {
+        if (lastDaoPhaseCount != daoPhaseCount && unfinalizedProposals > 0) {
+            return true;
+        }
+        return false;
+    }
+
     function _snapshotStakes(uint64 daoEpoch) private {
         address[] memory daoEpochVoters = _daoEpochVoters[daoEpoch].values();
 
@@ -533,8 +542,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     function _isValidator(address stakingAddress) private view returns (bool) {
         address miningAddress = validatorSet.miningByStakingAddress(stakingAddress);
 
-        return
-            miningAddress != address(0) && !validatorSet.isValidatorBanned(miningAddress);
+        return validatorSet.isValidatorOrPending(miningAddress) && !validatorSet.isValidatorBanned(miningAddress);
     }
 
     /**
