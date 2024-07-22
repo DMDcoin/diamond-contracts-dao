@@ -182,13 +182,12 @@ describe("DAO proposal execution", function () {
         [calldata]
       );
 
-      await expect(dao.execute(proposalId)).to.be.revertedWithCustomError(dao, "InvalidArgument");
+      await expect(dao.execute(proposalId)).to.be.revertedWithCustomError(dao, "NewValueOutOfRange");
     });
 
     it("should update createProposalFee using proposal", async function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
-
-      const newFeeValue = ethers.parseEther('111');
+      const newFeeValue = ethers.parseEther('20');
       const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [newFeeValue]);
 
       const { proposalId } = await finalizedProposal(

@@ -6,6 +6,7 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
+import { ValueGuards } from "./utils/ValueGuards.sol";
 import { IDiamondDao } from "./interfaces/IDiamondDao.sol";
 import { IValidatorSetHbbft } from "./interfaces/IValidatorSetHbbft.sol";
 import { IStakingHbbft } from "./interfaces/IStakingHbbft.sol";
@@ -27,7 +28,7 @@ import {
 /// - Manages the DAO funds.
 /// - Is able to upgrade all diamond-contracts-core contracts, including itself.
 /// - Is able to vote for chain settings.
-contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
+contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, ValueGuards {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
@@ -96,7 +97,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         _;
     }
 
-    modifier withinAllowedRange(address[] memory targets, bytes[] memory callDatas) {
+    modifier withinAllowedRangeExternal(address[] memory targets, bytes[] memory callDatas) {
         for (uint256 i = 0; i < targets.length; ++i) {
             if (!isCoreContract[targets[i]]) {
                 continue;
@@ -169,13 +170,26 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         daoPhase.phase = Phase.Proposal;
         daoPhase.daoEpoch = 1;
         daoPhaseCount = 1;
+
+        uint256[] memory createProposalFeeAllowedParams = new uint256[](9);
+        createProposalFeeAllowedParams[0] = 10 ether;
+        createProposalFeeAllowedParams[1] = 20 ether;
+        createProposalFeeAllowedParams[2] = 30 ether;
+        createProposalFeeAllowedParams[3] = 40 ether;
+        createProposalFeeAllowedParams[4] = 50 ether;
+        createProposalFeeAllowedParams[5] = 60 ether;
+        createProposalFeeAllowedParams[6] = 70 ether;
+        createProposalFeeAllowedParams[7] = 80 ether;
+        createProposalFeeAllowedParams[8] = 90 ether;
+
+        initAllowedChangeableParameter(
+            "setCreateProposalFee(uint256)",
+            "createProposalFee()",
+            createProposalFeeAllowedParams
+        );
      }
 
-    function setCreateProposalFee(uint256 _fee) external onlyGovernance {
-        if (_fee == 0) {
-            revert InvalidArgument();
-        }
-
+    function setCreateProposalFee(uint256 _fee) external onlyGovernance withinAllowedRange(_fee) {
         createProposalFee = _fee;
 
         emit SetCreateProposalFee(_fee);
@@ -236,7 +250,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         string memory title,
         string memory description,
         string memory discussionUrl
-    ) external payable onlyPhase(Phase.Proposal) withinAllowedRange(targets, calldatas) noUnfinalizedProposals {
+    ) external payable onlyPhase(Phase.Proposal) withinAllowedRangeExternal(targets, calldatas) noUnfinalizedProposals {
         if (
             targets.length != values.length ||
             targets.length != calldatas.length ||
