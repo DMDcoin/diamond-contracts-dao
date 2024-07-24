@@ -6,6 +6,7 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
+import "diamond-contracts-core/contracts/ValueGuards.sol";
 import { IDiamondDao } from "./interfaces/IDiamondDao.sol";
 import { IValidatorSetHbbft } from "./interfaces/IValidatorSetHbbft.sol";
 import { IStakingHbbft } from "./interfaces/IStakingHbbft.sol";
@@ -27,7 +28,7 @@ import {
 /// - Manages the DAO funds.
 /// - Is able to upgrade all diamond-contracts-core contracts, including itself.
 /// - Is able to vote for chain settings.
-contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
+contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, ValueGuards {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
@@ -69,6 +70,12 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     /// @dev proposal Id => voters[] - specific proposal voters
     mapping(uint256 => EnumerableSet.AddressSet) private _proposalVoters;
 
+    /// @dev Count of unfinalized proposals
+    uint256 public unfinalizedProposals;
+
+    /// @dev To keep track of the last DAO phase count for unfinalized proposals check
+    uint256 public lastDaoPhaseCount;
+
     modifier exists(uint256 proposalId) {
         if (!proposalExists(proposalId)) {
             revert ProposalNotExist(proposalId);
@@ -90,7 +97,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         _;
     }
 
-    modifier withinAllowedRange(address[] memory targets, bytes[] memory callDatas) {
+    modifier withinAllowedRangeExternal(address[] memory targets, bytes[] memory callDatas) {
         for (uint256 i = 0; i < targets.length; ++i) {
             if (!isCoreContract[targets[i]]) {
                 continue;
@@ -108,6 +115,15 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     modifier onlyValidator() {
         if (!_isValidator(msg.sender)) {
             revert OnlyValidators(msg.sender);
+        }
+        _;
+    }
+
+    modifier noUnfinalizedProposals() {
+        if (unfinalizedProposalsExist()) {
+            revert UnfinalizedProposalsExist();
+        } else if (lastDaoPhaseCount != daoPhaseCount) {
+            lastDaoPhaseCount = daoPhaseCount;
         }
         _;
     }
@@ -154,13 +170,26 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         daoPhase.phase = Phase.Proposal;
         daoPhase.daoEpoch = 1;
         daoPhaseCount = 1;
-    }
 
-    function setCreateProposalFee(uint256 _fee) external onlyGovernance {
-        if (_fee == 0) {
-            revert InvalidArgument();
-        }
+        uint256[] memory createProposalFeeAllowedParams = new uint256[](9);
+        createProposalFeeAllowedParams[0] = 10 ether;
+        createProposalFeeAllowedParams[1] = 20 ether;
+        createProposalFeeAllowedParams[2] = 30 ether;
+        createProposalFeeAllowedParams[3] = 40 ether;
+        createProposalFeeAllowedParams[4] = 50 ether;
+        createProposalFeeAllowedParams[5] = 60 ether;
+        createProposalFeeAllowedParams[6] = 70 ether;
+        createProposalFeeAllowedParams[7] = 80 ether;
+        createProposalFeeAllowedParams[8] = 90 ether;
 
+        initAllowedChangeableParameter(
+            "setCreateProposalFee(uint256)",
+            "createProposalFee()",
+            createProposalFeeAllowedParams
+        );
+     }
+
+    function setCreateProposalFee(uint256 _fee) external onlyGovernance withinAllowedRange(_fee) {
         createProposalFee = _fee;
 
         emit SetCreateProposalFee(_fee);
@@ -221,7 +250,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         string memory title,
         string memory description,
         string memory discussionUrl
-    ) external payable onlyPhase(Phase.Proposal) withinAllowedRange(targets, calldatas) {
+    ) external payable onlyPhase(Phase.Proposal) withinAllowedRangeExternal(targets, calldatas) noUnfinalizedProposals {
         if (
             targets.length != values.length ||
             targets.length != calldatas.length ||
@@ -261,6 +290,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
 
         currentPhaseProposals.push(proposalId);
         statistic.total += 1;
+        unfinalizedProposals += 1;
 
         _transfer(reinsertPot, msg.value);
 
@@ -324,6 +354,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         } else {
             statistic.declined += 1;
         }
+
+        unfinalizedProposals -= 1;
 
         emit VotingFinalized(msg.sender, proposalId, accepted);
     }
@@ -420,12 +452,12 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
      */
     function quorumReached(ProposalType _type, VotingResult memory result) public view returns (bool) {
         uint256 requiredExceeding;
-        uint256 totalDaoStake = _getTotalDaoStake();
+        uint256 totalStakedAmount = _getTotalStakedAmount();
 
         if (_type == ProposalType.ContractUpgrade) {
-            requiredExceeding = totalDaoStake * (50 * 100) / 10000;
+            requiredExceeding = totalStakedAmount * (50 * 100) / 10000;
         } else {
-            requiredExceeding = totalDaoStake * (33 * 100) / 10000;
+            requiredExceeding = totalStakedAmount * (33 * 100) / 10000;
         }
 
         return result.stakeYes >= result.stakeNo + requiredExceeding;
@@ -440,6 +472,13 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         bytes32 descriptionHash = keccak256(bytes(description));
 
         return uint256(keccak256(abi.encode(targets, values, calldatas, descriptionHash)));
+    }
+
+    function unfinalizedProposalsExist() public view returns (bool) {
+        if (lastDaoPhaseCount != daoPhaseCount && unfinalizedProposals > 0) {
+            return true;
+        }
+        return false;
     }
 
     function _snapshotStakes(uint64 daoEpoch) private {
@@ -517,8 +556,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
     function _isValidator(address stakingAddress) private view returns (bool) {
         address miningAddress = validatorSet.miningByStakingAddress(stakingAddress);
 
-        return
-            miningAddress != address(0) && validatorSet.validatorAvailableSince(miningAddress) != 0;
+        return validatorSet.isValidatorOrPending(miningAddress) && !validatorSet.isValidatorBanned(miningAddress);
     }
 
     /**
@@ -577,8 +615,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable {
         }
     }
 
-    function _getTotalDaoStake() private view returns (uint256) {
-        // TODO: Get total staked amount from method instead of balance
+    function _getTotalStakedAmount() private view returns (uint256) {
+        // TODO: Get total staked amount from staking contact method instead of balance
         return stakingHbbft.totalStakedAmount();
     }
 }

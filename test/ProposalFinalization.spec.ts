@@ -392,8 +392,6 @@ describe("Proposal Acceptance Threshold", function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
       const proposer = users[4];
-      const userToFund = users[5];
-      const fundAmount = ethers.parseEther('0');
 
       await addValidatorsStake(
         mockValidatorSet,
@@ -462,9 +460,7 @@ describe("Proposal Acceptance Threshold", function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
       const proposer = users[4];
-      const userToFund = users[5];
-      const fundAmount = ethers.parseEther('0');
-
+      
       await addValidatorsStake(
         mockValidatorSet,
         mockStaking,

@@ -29,5 +29,8 @@
     "typescript": "^5.4.5",
     "typechain": "^8.1.0"
   },
+  "dependencies": {
+    "diamond-contracts-core": "https://github.com/DMDcoin/diamond-contracts-core.git#dev"
+  },
   "prettier": "./.prettierrc.json"
 }
