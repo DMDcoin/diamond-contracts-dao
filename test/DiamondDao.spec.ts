@@ -482,6 +482,7 @@ describe("DiamondDao contract", function () {
     });
 
     it("should revert propose if limit was reached", async function () {
+      const proposer = users[2];
       const { dao } = await loadFixture(deployFixture);
 
       for (let i = 0; i < 1000; ++i) {
@@ -489,7 +490,7 @@ describe("DiamondDao contract", function () {
       }
 
       await expect(
-        dao.connect(users[2]).propose(
+        dao.connect(proposer).propose(
           [users[3].address],
           [ethers.parseEther('10')],
           [EmptyBytes],
@@ -1268,6 +1269,47 @@ describe("DiamondDao contract", function () {
         dao.execute(proposalId)
       ).to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
         .withArgs(proposalId, ProposalState.Created);
+    });
+
+    it("should revert execute of proposals that are outside execution window", async function () {
+      const voters = users.slice(10, 25);
+
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const proposer = users[4];
+      const userToFund = users[5];
+      const fundAmount = ethers.parseEther('1');
+
+      const { proposalId } = await createProposal(
+        dao,
+        users[1],
+        "fund user 5",
+        [userToFund.address],
+        [fundAmount],
+        [EmptyBytes]
+      );
+
+      await proposer.sendTransaction({
+        to: await dao.getAddress(),
+        value: fundAmount
+      });
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+
+      await swithPhase(dao); // switches to: voting phase 1
+      await vote(dao, proposalId, voters, Vote.Yes);
+      await swithPhase(dao); // switches to: proposal phase 2 (executable window)
+      await swithPhase(dao); // switches to: voting phase 2 (executable window)
+
+      expect(await dao.finalize(proposalId));
+
+      await swithPhase(dao); // switches to: proposal phase 3 (outside executable window)
+
+      const tx = dao.connect(proposer).execute(proposalId);
+
+      await expect(tx)
+        .to.revertedWithCustomError(dao, "OutsideExecutionWindow")
+        .withArgs(proposalId)
     });
 
     it("should revert execute of declined proposal", async function () {
