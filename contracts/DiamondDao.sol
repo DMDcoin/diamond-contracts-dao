@@ -362,6 +362,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
     function execute(uint256 proposalId) external nonReentrant exists(proposalId) {
         _requireState(proposalId, ProposalState.Accepted);
+        _requireIsExecutable(proposalId);
 
         Proposal storage proposal = proposals[proposalId];
 
@@ -550,6 +551,20 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
         if (state != _state) {
             revert UnexpectedProposalState(_proposalId, state);
+        }
+    }
+
+    function _requireIsExecutable(uint256 _proposalId) private view {
+        Proposal memory proposal = getProposal(_proposalId);
+        
+        if (proposal.daoPhaseCount + 1 != daoPhaseCount) {
+            revert OutsideExecutionWindow(_proposalId);
+        }
+
+        if (
+            proposal.proposalType == ProposalType.ContractUpgrade && proposal.proposer != msg.sender
+        ) {
+            revert NotProposer(_proposalId, msg.sender);
         }
     }
 

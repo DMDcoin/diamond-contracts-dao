@@ -168,6 +168,7 @@ describe("DAO proposal execution", function () {
 
   describe("self function calls", async function () {
     it("should not allow to set createProposalFee = 0", async function () {
+      const proposer = users[2];
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
       const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [0n]);
@@ -182,10 +183,11 @@ describe("DAO proposal execution", function () {
         [calldata]
       );
 
-      await expect(dao.execute(proposalId)).to.be.revertedWithCustomError(dao, "NewValueOutOfRange");
+      await expect(dao.connect(proposer).execute(proposalId)).to.be.revertedWithCustomError(dao, "NewValueOutOfRange");
     });
 
     it("should update createProposalFee using proposal", async function () {
+      const proposer = users[2];
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
       const newFeeValue = ethers.parseEther('20');
       const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [newFeeValue]);
@@ -200,7 +202,7 @@ describe("DAO proposal execution", function () {
         [calldata]
       );
 
-      await expect(dao.execute(proposalId))
+      await expect(dao.connect(proposer).execute(proposalId))
         .to.emit(dao, "SetCreateProposalFee")
         .withArgs(newFeeValue);
 
@@ -210,6 +212,7 @@ describe("DAO proposal execution", function () {
 
   describe("self upgrade", async function () {
     it("should perform DAO self upgrade", async function () {
+      const proposer = users[2];
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
       const daoAddress = await dao.getAddress();
@@ -244,9 +247,9 @@ describe("DAO proposal execution", function () {
         [calldata]
       );
 
-      await expect(dao.execute(proposalId))
+      await expect(dao.connect(proposer).execute(proposalId))
         .to.emit(dao, "ProposalExecuted")
-        .withArgs(users[0].address, proposalId);
+        .withArgs(proposer.address, proposalId);
 
       expect(await upgrades.erc1967.getImplementationAddress(daoAddress)).to.equal(newImplementation);
     });
