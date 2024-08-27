@@ -189,18 +189,25 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       await expect(dao.connect(proposer).execute(proposalId)).to.emit(dao, "SetIsCoreContract").withArgs(await mockStaking.getAddress(), true);
     });
 
-    it("should fail to propose ecosystem parameter change as not allowed", async function () {
-      const proposer = users[2];
-      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['50000000000000000000']);
+    it("should fail to propose as ecosystem parameter change", async function () {
+      const newVal = '50000000000000000000';
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", [newVal]);
 
       const targets = [await mockStaking.getAddress()];
       const values = [0n];
       const calldatas = [calldata];
-      const description = "test";
 
-      await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
-      ).to.be.revertedWithCustomError(dao, "OutOfAllowedRange");
+      const { proposalId } = await finalizedProposal(
+        dao,
+        mockValidatorSet,
+        mockStaking,
+        Vote.Yes,
+        targets,
+        values,
+        calldatas
+      );
+     
+      expect((await dao.getProposal(proposalId)).proposalType).to.equal(1);
     });
 
     it("should set setChangeAbleParameters", async function () {
@@ -227,7 +234,8 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
 
     it("should fail to propose ecosystem parameter change as invalid upgrade value", async function () {
       const proposer = users[2];
-      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['200000000000000000000']);
+      const newVal = '200000000000000000000';
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", [newVal]);
 
       const targets = [await mockStaking.getAddress()];
       const values = [0n];
@@ -236,7 +244,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
 
       await expect(
         dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
-      ).to.be.revertedWithCustomError(dao, "OutOfAllowedRange");
+      ).to.be.revertedWithCustomError(dao, "NewValueOutOfRange").withArgs(newVal);
     });
 
     it("should successfully propose ecosystem parameter change increment", async function () {

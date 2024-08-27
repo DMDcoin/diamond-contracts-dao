@@ -22,3 +22,5 @@ coverage.json
 
 # IDE
 .vscode/
+
+package-lock.json

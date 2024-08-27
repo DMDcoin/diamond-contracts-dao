@@ -169,21 +169,20 @@ describe("DAO proposal execution", function () {
   describe("self function calls", async function () {
     it("should not allow to set createProposalFee = 0", async function () {
       const proposer = users[2];
-      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao } = await loadFixture(deployFixture);
 
-      const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [0n]);
+      const newVal = 0n;
+      const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [newVal]);
 
-      const { proposalId } = await finalizedProposal(
-        dao,
-        mockValidatorSet,
-        mockStaking,
-        Vote.Yes,
+      await expect(dao.connect(proposer).propose(
         [await dao.getAddress()],
         [0n],
-        [calldata]
-      );
-
-      await expect(dao.connect(proposer).execute(proposalId)).to.be.revertedWithCustomError(dao, "NewValueOutOfRange");
+        [calldata],
+        "title",
+        "test",
+        "url",
+        { value: createProposalFee }
+      )).to.be.revertedWithCustomError(dao, "NewValueOutOfRange").withArgs(newVal);
     });
 
     it("should update createProposalFee using proposal", async function () {
