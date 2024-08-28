@@ -360,7 +360,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
         proposal.state = ProposalState.Executed;
 
-        _executeOperations(proposal.targets, proposal.values, proposal.calldatas);
+        _executeOperations(proposal.targets, proposal.values, proposal.calldatas, proposal.proposalType);
 
         emit ProposalExecuted(msg.sender, proposalId);
     }
@@ -515,17 +515,19 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     function _executeOperations(
         address[] memory targets,
         uint256[] memory values,
-        bytes[] memory calldatas
+        bytes[] memory calldatas,
+        ProposalType proposalType
     ) private {
         for (uint256 i = 0; i < targets.length; ++i) {
-            (bool success, bytes memory returndata) = targets[i].call{ value: values[i] }(
+            uint256 execValue = proposalType == ProposalType.Open ? values[i] : 0;
+            (bool success, bytes memory returndata) = targets[i].call{ value: execValue }(
                 calldatas[i]
             );
 
             Address.verifyCallResult(success, returndata);
 
-            if (values[i] != 0) {
-                governancePot -= values[i];
+            if (execValue != 0) {
+                governancePot -= execValue;
             }
         }
     }
