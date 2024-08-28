@@ -127,6 +127,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         address _validatorSet,
         address _stakingHbbft,
         address _reinsertPot,
+        address _txPermission,
         uint256 _createProposalFee,
         uint64 _startTimestamp
     ) external initializer {
@@ -174,6 +175,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         );
 
         isCoreContract[address(this)] = true;
+        isCoreContract[_stakingHbbft] = true;
+        isCoreContract[_txPermission] = true;
+        isCoreContract[_reinsertPot] = true;
      }
 
     function setCreateProposalFee(uint256 _fee) external onlyGovernance withinAllowedRange(_fee) {
