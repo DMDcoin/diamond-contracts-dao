@@ -63,6 +63,7 @@ describe("DiamondDao contract", function () {
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
+      ethers.ZeroAddress,
       createProposalFee,
       startTime + 1
     ], {
@@ -151,6 +152,7 @@ describe("DiamondDao contract", function () {
           ethers.ZeroAddress,
           users[1].address,
           users[2].address,
+          ethers.ZeroAddress,
           createProposalFee,
           startTime + 1
         ], {
@@ -168,6 +170,7 @@ describe("DiamondDao contract", function () {
           users[1].address,
           ethers.ZeroAddress,
           users[2].address,
+          ethers.ZeroAddress,
           createProposalFee,
           startTime + 1
         ], {
@@ -184,6 +187,7 @@ describe("DiamondDao contract", function () {
         upgrades.deployProxy(daoFactory, [
           users[1].address,
           users[2].address,
+          ethers.ZeroAddress,
           ethers.ZeroAddress,
           createProposalFee,
           startTime + 1
@@ -202,6 +206,7 @@ describe("DiamondDao contract", function () {
           users[1].address,
           users[2].address,
           users[3].address,
+          ethers.ZeroAddress,
           0n,
           startTime + 1
         ], {
@@ -219,6 +224,7 @@ describe("DiamondDao contract", function () {
           users[1].address,
           users[2].address,
           users[3].address,
+          ethers.ZeroAddress,
           createProposalFee,
           startTime - 10
         ], {
@@ -235,6 +241,7 @@ describe("DiamondDao contract", function () {
         users[1].address,
         users[2].address,
         users[3].address,
+        ethers.ZeroAddress,
         createProposalFee,
         startTime + 1
       ], {
@@ -248,6 +255,7 @@ describe("DiamondDao contract", function () {
           users[1].address,
           users[2].address,
           users[3].address,
+          ethers.ZeroAddress,
           createProposalFee,
           startTime + 1
         )
@@ -452,6 +460,7 @@ describe("DiamondDao contract", function () {
         await mockValidatorSet.getAddress(),
         await mockValidatorSet.getAddress(),
         await mockValidatorSet.getAddress(),
+        ethers.ZeroAddress,
         createProposalFee,
         startTime + 1
       ], {

@@ -97,21 +97,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         _;
     }
 
-    modifier withinAllowedRangeExternal(address[] memory targets, bytes[] memory callDatas) {
-        for (uint256 i = 0; i < targets.length; ++i) {
-            if (!isCoreContract[targets[i]]) {
-                continue;
-            }
-
-            (bytes4 setFuncSelector, uint256 newVal) = _extractCallData(callDatas[i]);
-
-            if (!ICoreValueGuard(targets[i]).isWithinAllowedRange(setFuncSelector, newVal)) {
-                revert ICoreValueGuard.OutOfAllowedRange();
-            }
-        }
-        _;
-    }
-
     modifier onlyValidator() {
         if (!_isValidator(msg.sender)) {
             revert OnlyValidators(msg.sender);
@@ -142,6 +127,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         address _validatorSet,
         address _stakingHbbft,
         address _reinsertPot,
+        address _txPermission,
         uint256 _createProposalFee,
         uint64 _startTimestamp
     ) external initializer {
@@ -187,6 +173,11 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
             "createProposalFee()",
             createProposalFeeAllowedParams
         );
+
+        isCoreContract[address(this)] = true;
+        isCoreContract[_stakingHbbft] = true;
+        isCoreContract[_txPermission] = true;
+        isCoreContract[_reinsertPot] = true;
      }
 
     function setCreateProposalFee(uint256 _fee) external onlyGovernance withinAllowedRange(_fee) {
@@ -250,7 +241,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         string memory title,
         string memory description,
         string memory discussionUrl
-    ) external payable onlyPhase(Phase.Proposal) withinAllowedRangeExternal(targets, calldatas) noUnfinalizedProposals {
+    ) external payable onlyPhase(Phase.Proposal) noUnfinalizedProposals {
         if (
             targets.length != values.length ||
             targets.length != calldatas.length ||
@@ -266,7 +257,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         if (currentPhaseProposals.length >= MAX_NEW_PROPOSALS) {
             revert NewProposalsLimitExceeded();
         }
-
+        
+        ProposalType proposalType = _checkProposalType(targets, calldatas);
         uint256 proposalId = hashProposal(targets, values, calldatas, description);
 
         if (proposalExists(proposalId)) {
@@ -286,7 +278,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         proposal.description = description;
         proposal.discussionUrl = discussionUrl;
         proposal.daoPhaseCount = daoPhaseCount;
-        proposal.proposalType = _getProposalType(targets, calldatas);
+        proposal.proposalType = proposalType;
 
         currentPhaseProposals.push(proposalId);
         statistic.total += 1;
@@ -368,7 +360,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
         proposal.state = ProposalState.Executed;
 
-        _executeOperations(proposal.targets, proposal.values, proposal.calldatas);
+        _executeOperations(proposal.targets, proposal.values, proposal.calldatas, proposal.proposalType);
 
         emit ProposalExecuted(msg.sender, proposalId);
     }
@@ -523,17 +515,19 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     function _executeOperations(
         address[] memory targets,
         uint256[] memory values,
-        bytes[] memory calldatas
+        bytes[] memory calldatas,
+        ProposalType proposalType
     ) private {
         for (uint256 i = 0; i < targets.length; ++i) {
-            (bool success, bytes memory returndata) = targets[i].call{ value: values[i] }(
+            uint256 execValue = proposalType == ProposalType.Open ? values[i] : 0;
+            (bool success, bytes memory returndata) = targets[i].call{ value: execValue }(
                 calldatas[i]
             );
 
             Address.verifyCallResult(success, returndata);
 
-            if (values[i] != 0) {
-                governancePot -= values[i];
+            if (execValue != 0) {
+                governancePot -= execValue;
             }
         }
     }
@@ -617,21 +611,45 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
      * @param calldatas The array of calldata bytes.
      * @return _type The type of proposal (Open, EcosystemParameterChange, or ContractUpgrade).
      */
-    function _getProposalType(address[] memory targets, bytes[] memory calldatas) private view returns (ProposalType _type) {
+    function _checkProposalType(address[] memory targets, bytes[] memory calldatas) private view returns (ProposalType _type) {
         _type = ProposalType.Open;
 
         for (uint256 i = 0; i < calldatas.length; i++) {
             if (calldatas[i].length == 0) continue;
-            if (isCoreContract[targets[i]]) {
-                _type = ProposalType.EcosystemParameterChange;
+
+            (bytes4 setFuncSelector, uint256 newVal) = _extractCallData(calldatas[i]);
+
+            // Perform the low-level call to check if the allowed ranges are defined on the target contract's method.
+            // This is done to avoid calling isWithinAllowedRange, which will revert if ranges are not defined.
+            // Only for core contracts with defined ranges, the proposal type is set to EcosystemParameterChange.
+            // All others are treated as ContractUpgrade by default.
+            (bool success, bytes memory result) = targets[i].staticcall(
+                abi.encodeWithSelector(
+                    ICoreValueGuard(targets[i]).getAllowedParamsRangeWithSelector.selector,
+                    setFuncSelector
+                )
+            );
+
+            if (success && result.length > 0) {
+                ICoreValueGuard.ParameterRange memory rangeData = abi.decode(result, (ICoreValueGuard.ParameterRange));
+
+                if (isCoreContract[targets[i]] && rangeData.range.length > 0) {
+                    _type = ProposalType.EcosystemParameterChange;
+
+                    if (!ICoreValueGuard(targets[i]).isWithinAllowedRange(setFuncSelector, newVal)) {
+                        revert NewValueOutOfRange(newVal);
+                    }
+                } else {
+                    return ProposalType.ContractUpgrade;
+                }
             } else {
+                // If the call fails, treat it as a ContractUpgrade proposal
                 return ProposalType.ContractUpgrade;
             }
         }
     }
 
     function _getTotalStakedAmount() private view returns (uint256) {
-        // TODO: Get total staked amount from staking contact method instead of balance
         return stakingHbbft.totalStakedAmount();
     }
 }

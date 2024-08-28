@@ -65,6 +65,7 @@ describe("Proposal Acceptance Threshold", function () {
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
+      ethers.ZeroAddress,
       createProposalFee,
       startTime + 10
     ], {

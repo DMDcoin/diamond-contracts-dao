@@ -125,4 +125,8 @@ contract MockStakingHbbft is IStakingHbbft {
         require(success, "Getter call failed");
         return abi.decode(result, (uint256));
     }
+
+    function getAllowedParamsRangeWithSelector(bytes4 _selector) external view returns (ParameterRange memory) {
+        return allowedParameterRange[_selector];
+    }
 }
