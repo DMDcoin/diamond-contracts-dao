@@ -631,7 +631,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
                     _type = ProposalType.EcosystemParameterChange;
 
                     if (!ICoreValueGuard(targets[i]).isWithinAllowedRange(setFuncSelector, newVal)) {
-                        revert ICoreValueGuard.NewValueOutOfRange(newVal);
+                        revert NewValueOutOfRange(newVal);
                     }
                 } else {
                     return ProposalType.ContractUpgrade;

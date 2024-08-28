@@ -2,8 +2,6 @@
 pragma solidity =0.8.25;
 
 interface ICoreValueGuard {
-    error NewValueOutOfRange(uint256 _newVal);
-
     struct ParameterRange {
         bytes4 getter;
         uint256[] range;

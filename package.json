@@ -27,11 +27,11 @@
     "@openzeppelin/hardhat-upgrades": "^3.1.0",
     "hardhat-contract-sizer": "^2.10.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5",
-    "typechain": "^8.1.0"
+    "typechain": "^8.1.0",
+    "typescript": "^5.4.5"
   },
   "dependencies": {
-    "diamond-contracts-core": "https://github.com/MSalman6/diamond-contracts-core.git#coreValueGuards"
+    "diamond-contracts-core": "github:DMDcoin/diamond-contracts-core#dev"
   },
   "prettier": "./.prettierrc.json"
 }
