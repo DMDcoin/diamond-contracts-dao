@@ -36,7 +36,7 @@ async function compileProxy() {
         "0x1100000000000000000000000000000000000001", //address _stakingHbbft,
         "0x2000000000000000000000000000000000000001", //address _reinsertPot,
         "0x4000000000000000000000000000000000000001", //address _txPermission,
-        ethers.parseEther("1"),//uint256 _createProposalFee,
+        ethers.parseEther("10"),//uint256 _createProposalFee,
         startTimeBigInt //uint64 _startTimestamp
     ];
 
