@@ -7,7 +7,6 @@ contract MockValidatorSetHbbft is IValidatorSetHbbft {
     mapping(address => address) private _stakingToMining;
     mapping(address => bool) private _isValidator;
     mapping(address => bool) private _availability;
-    mapping(address => uint256) public bannedUntil;
 
     receive() external payable {
         revert();
@@ -19,10 +18,6 @@ contract MockValidatorSetHbbft is IValidatorSetHbbft {
         _isValidator[mining] = true;
         _stakingToMining[staking] = mining;
         _availability[mining] = available;
-    }
-
-    function addBanned(address _miningAddress, uint256 _bannedUntil) external {
-        bannedUntil[_miningAddress] = _bannedUntil;
     }
 
     function remove(address staking) external {
@@ -49,10 +44,6 @@ contract MockValidatorSetHbbft is IValidatorSetHbbft {
 
     function validatorAvailableSince(address mining) external view returns (uint256) {
         return _availability[mining] ? block.number : 0;
-    }
-
-    function isValidatorBanned(address _miningAddress) public view returns (bool) {
-        return block.timestamp <= bannedUntil[_miningAddress];
     }
 
     function isValidatorOrPending(address _miningAddress) public view returns (bool) {
