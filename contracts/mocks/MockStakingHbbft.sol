@@ -2,8 +2,10 @@
 pragma solidity =0.8.25;
 
 import { IStakingHbbft } from "../interfaces/IStakingHbbft.sol";
+import { IValidatorSetHbbft } from "../interfaces/IValidatorSetHbbft.sol";
 
 contract MockStakingHbbft is IStakingHbbft {
+    IValidatorSetHbbft public validatorSet;
     uint256 public totalStakedAmount;
     uint256 public delegatorMinStake = 100 ether;
     mapping(address => uint256) private _stakeAmountTotal;
@@ -44,7 +46,9 @@ contract MockStakingHbbft is IStakingHbbft {
         _;
     }
 
-    constructor() {}
+    constructor(address _vs) {
+        validatorSet = IValidatorSetHbbft(_vs);
+    }
 
     function setStake(address staking, uint256 stakeAmount) external {
         _stakeAmountTotal[staking] = stakeAmount;
@@ -128,5 +132,10 @@ contract MockStakingHbbft is IStakingHbbft {
 
     function getAllowedParamsRangeWithSelector(bytes4 _selector) external view returns (ParameterRange memory) {
         return allowedParameterRange[_selector];
+    }
+
+    function isPoolValid(address _stakingAddress) public view returns (bool) {
+        address miningAddress = validatorSet.miningByStakingAddress(_stakingAddress);
+        return validatorSet.isValidator(miningAddress);
     }
 }

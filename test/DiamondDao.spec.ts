@@ -54,7 +54,7 @@ describe("DiamondDao contract", function () {
     const mockValidatorSet = await mockFactory.deploy();
     await mockValidatorSet.waitForDeployment();
 
-    const mockStaking = await stakingFactory.deploy();
+    const mockStaking = await stakingFactory.deploy(await mockValidatorSet.getAddress());
     await mockStaking.waitForDeployment();
 
     const startTime = await time.latest();
@@ -762,16 +762,14 @@ describe("DiamondDao contract", function () {
         .withArgs(voter.address);
     });
 
-    it("should revert vote by banned validator", async function () {
-      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+    it("should revert vote by inactive validator", async function () {
+      const { dao } = await loadFixture(deployFixture);
 
       const proposer = users[10];
       const voter = users[9];
 
       const { proposalId } = await createProposal(dao, proposer, "a");
 
-      await mockValidatorSet.add(voter.address, voter.address, false);
-      await mockValidatorSet.addBanned(voter.address, Math.floor(new Date().getTime() / 1000) + 1000000);
       await swithPhase(dao);
 
       await expect(

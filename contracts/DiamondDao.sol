@@ -563,9 +563,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     }
 
     function _isValidator(address stakingAddress) private view returns (bool) {
-        address miningAddress = validatorSet.miningByStakingAddress(stakingAddress);
-
-        return validatorSet.isValidatorOrPending(miningAddress) && !validatorSet.isValidatorBanned(miningAddress);
+        return stakingHbbft.isPoolValid(stakingAddress);
     }
 
     /**
