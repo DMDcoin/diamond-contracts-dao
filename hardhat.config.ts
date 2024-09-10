@@ -33,6 +33,18 @@ const config: HardhatUserConfig = {
         mnemonic: mnemonic
       }
     },
+    alpha4: {
+      url: "http://62.171.133.46:54100",
+      accounts: {
+        count: 10,
+        path: "m/44'/60'/0'/0",
+        mnemonic
+      },
+
+      allowUnlimitedContractSize: true,
+      hardfork: "istanbul",
+      minGasPrice: 1000000000
+    },
   },
   solidity: {
     compilers: [
@@ -83,6 +95,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://explorer.uniq.diamonds/api",
           browserURL: "https://explorer.uniq.diamonds",
+        },
+      },
+      {
+        network: "alpha4",
+        chainId: 777018,
+        urls: {
+            apiURL: "http://62.171.133.46:4400/api",
+            browserURL: "http://62.171.133.46:4400",
         },
       },
     ],
