@@ -50,6 +50,10 @@ async function compileProxy() {
         constructor: proxyDeployTX.data
     };
     
+    if (!fs.existsSync("out")) {
+        fs.mkdirSync("out");
+    }
+    
     fs.writeFileSync("out/spec_dao.json", JSON.stringify(spec));
    //spec[]
 
