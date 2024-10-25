@@ -275,7 +275,8 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           calldatas,
           "title",
           description,
-          "url"
+          "url",
+          createProposalFee
         );
     });
 
@@ -306,7 +307,8 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           calldatas,
           "title",
           description,
-          "url"
+          "url",
+          createProposalFee
         );
 
       expect((await dao.getProposal(proposalId)).proposalType).to.equal(2);
@@ -339,7 +341,8 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           calldatas,
           "title",
           description,
-          "url"
+          "url",
+          createProposalFee
         );
 
       expect((await dao.getProposal(proposalId)).proposalType).to.equal(1);

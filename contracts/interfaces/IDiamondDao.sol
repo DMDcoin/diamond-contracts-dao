@@ -12,7 +12,8 @@ interface IDiamondDao {
         bytes[] calldatas,
         string title,
         string description,
-        string discussionUrl
+        string discussionUrl,
+        uint256 proposalFee
     );
 
     event ProposalCanceled(address indexed proposer, uint256 indexed proposalId, string reason);

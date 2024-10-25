@@ -59,6 +59,7 @@ struct Proposal {
     string description;
     string discussionUrl;
     uint256 daoPhaseCount;
+    uint256 proposalFee;
     ProposalType proposalType;
 }
 

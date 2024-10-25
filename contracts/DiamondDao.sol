@@ -278,15 +278,14 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         proposal.description = description;
         proposal.discussionUrl = discussionUrl;
         proposal.daoPhaseCount = daoPhaseCount;
+        proposal.proposalFee = createProposalFee;
         proposal.proposalType = proposalType;
 
         currentPhaseProposals.push(proposalId);
         statistic.total += 1;
         unfinalizedProposals += 1;
 
-        _transfer(reinsertPot, msg.value);
-
-        emit ProposalCreated(proposer, proposalId, targets, values, calldatas, title, description, discussionUrl);
+        emit ProposalCreated(proposer, proposalId, targets, values, calldatas, title, description, discussionUrl, createProposalFee);
     }
 
     function cancel(uint256 proposalId, string calldata reason) external exists(proposalId) {
@@ -343,8 +342,14 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
         if (accepted) {
             statistic.accepted += 1;
+
+            // return fee back to the proposer
+            _transfer(proposal.proposer, proposal.proposalFee);
         } else {
             statistic.declined += 1;
+
+            // send fee to the reinsert pot
+            _transfer(reinsertPot, proposal.proposalFee);
         }
 
         unfinalizedProposals -= 1;
