@@ -8,7 +8,8 @@
     "clean": "rm -rf artifacts/ cache/ coverage/ typechain/ typechain-types/ coverage.json",
     "coverage": "npx hardhat coverage --show-stack-traces --config ./hardhat-coverage.config.ts --solcoverjs ./.solcover.js",
     "update-core": "rm -rf node_modules/diamond-contracts-core && npm install diamond-contracts-core --save --legacy-peer-deps",
-    "deployForDaoUpgrade": "npx hardhat run scripts/deployForDaoUpgrade.ts"
+    "deployForDaoUpgrade": "npx hardhat run scripts/deployForDaoUpgrade.ts",
+    "clean-install": "rm -f package-lock.json && rm -rf node_modules/diamond-contracts-core && npm install"
   },
   "repository": {
     "type": "git",
