@@ -440,7 +440,8 @@ describe("Proposal Acceptance Threshold", function () {
           calldatas,
           "title",
           description,
-          "url"
+          "url",
+          createProposalFee
         );
 
       await swithPhase(dao);
@@ -508,7 +509,8 @@ describe("Proposal Acceptance Threshold", function () {
           calldatas,
           "title",
           description,
-          "url"
+          "url",
+          createProposalFee
         );
 
       await swithPhase(dao);
