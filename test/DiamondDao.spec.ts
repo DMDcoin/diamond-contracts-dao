@@ -567,7 +567,6 @@ describe("DiamondDao contract", function () {
         description,
         "url",
         1, // first phase
-        createProposalFee,
         0 // open proposal
       ]);
     });

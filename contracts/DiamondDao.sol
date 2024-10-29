@@ -76,6 +76,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     /// @dev To keep track of the last DAO phase count for unfinalized proposals check
     uint256 public lastDaoPhaseCount;
 
+    /// @dev To keep track of proposal creation fee
+    mapping(uint256 => uint256) public proposalFee;
+
     modifier exists(uint256 proposalId) {
         if (!proposalExists(proposalId)) {
             revert ProposalNotExist(proposalId);
@@ -278,12 +281,13 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         proposal.description = description;
         proposal.discussionUrl = discussionUrl;
         proposal.daoPhaseCount = daoPhaseCount;
-        proposal.proposalFee = createProposalFee;
         proposal.proposalType = proposalType;
 
         currentPhaseProposals.push(proposalId);
         statistic.total += 1;
         unfinalizedProposals += 1;
+
+        proposalFee[proposalId] = createProposalFee;
 
         emit ProposalCreated(proposer, proposalId, targets, values, calldatas, title, description, discussionUrl, createProposalFee);
     }
@@ -344,12 +348,12 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
             statistic.accepted += 1;
 
             // return fee back to the proposer
-            _transfer(proposal.proposer, proposal.proposalFee);
+            _transfer(proposal.proposer, proposalFee[proposalId]);
         } else {
             statistic.declined += 1;
 
             // send fee to the reinsert pot
-            _transfer(reinsertPot, proposal.proposalFee);
+            _transfer(reinsertPot, proposalFee[proposalId]);
         }
 
         unfinalizedProposals -= 1;
