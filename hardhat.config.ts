@@ -34,13 +34,13 @@ const config: HardhatUserConfig = {
       }
     },
     alpha4: {
-      url: "http://62.171.133.46:54100",
+      url: "https://alpha3.uniq.domains/alpha4/rpc/",
+      chainId: 777018,
       accounts: {
         count: 10,
         path: "m/44'/60'/0'/0",
         mnemonic
       },
-
       allowUnlimitedContractSize: true,
       hardfork: "istanbul",
       minGasPrice: 1000000000

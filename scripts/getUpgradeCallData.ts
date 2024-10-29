@@ -21,6 +21,13 @@ async function getUpgradeCalldata() {
         ethers.hexlify(new Uint8Array()),
     ]);
     console.log("Calldata: ", calldata);
+
+    console.log("Verifying implementation contract...");
+    await hre.run("verify:verify", {
+        address: newImplementation,
+        constructorArguments: [],
+    });
+    return console.log("Implementation contract verified!");
 }
 
 getUpgradeCalldata().catch((error) => {
