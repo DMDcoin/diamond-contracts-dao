@@ -34,7 +34,11 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
     uint256 public daoPhaseCount;
     uint256 public constant MAX_NEW_PROPOSALS = 1000;
-    uint64 public constant DAO_PHASE_DURATION = 2 hours;
+
+    ///@dev this is the duration of each DAO phase.
+    ///A full DAO cycle consists of 2 phases: Proposal and Voting,
+    /// therefore the full cycle duration is double that amount.
+    uint64 public constant DAO_PHASE_DURATION = 1 days;
 
     address public reinsertPot;
     uint256 public createProposalFee;
