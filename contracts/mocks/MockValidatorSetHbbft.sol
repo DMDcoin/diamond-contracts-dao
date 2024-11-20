@@ -45,4 +45,8 @@ contract MockValidatorSetHbbft is IValidatorSetHbbft {
     function validatorAvailableSince(address mining) external view returns (uint256) {
         return _availability[mining] ? block.number : 0;
     }
+
+    function isValidatorOrPending(address _miningAddress) public view returns (bool) {
+        return _isValidator[_miningAddress];
+    }
 }

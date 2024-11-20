@@ -56,7 +56,7 @@ describe("Proposal Acceptance Threshold", function () {
     const mockValidatorSet = await mockFactory.deploy();
     await mockValidatorSet.waitForDeployment();
 
-    const mockStaking = await stakingFactory.deploy();
+    const mockStaking = await stakingFactory.deploy(await mockValidatorSet.getAddress());
     await mockStaking.waitForDeployment();
 
     const startTime = await time.latest();
@@ -65,6 +65,7 @@ describe("Proposal Acceptance Threshold", function () {
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
+      ethers.ZeroAddress,
       createProposalFee,
       startTime + 10
     ], {
@@ -392,8 +393,6 @@ describe("Proposal Acceptance Threshold", function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
       const proposer = users[4];
-      const userToFund = users[5];
-      const fundAmount = ethers.parseEther('0');
 
       await addValidatorsStake(
         mockValidatorSet,
@@ -441,7 +440,8 @@ describe("Proposal Acceptance Threshold", function () {
           calldatas,
           "title",
           description,
-          "url"
+          "url",
+          createProposalFee
         );
 
       await swithPhase(dao);
@@ -462,9 +462,7 @@ describe("Proposal Acceptance Threshold", function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
       const proposer = users[4];
-      const userToFund = users[5];
-      const fundAmount = ethers.parseEther('0');
-
+      
       await addValidatorsStake(
         mockValidatorSet,
         mockStaking,
@@ -511,7 +509,8 @@ describe("Proposal Acceptance Threshold", function () {
           calldatas,
           "title",
           description,
-          "url"
+          "url",
+          createProposalFee
         );
 
       await swithPhase(dao);

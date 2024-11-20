@@ -11,4 +11,4 @@ Solidity contracts for the DMD diamond dao
 
 ### Proposal Acceptance Examples
 
-![TestCases] (docs/diagrams/TestCases.png)
+![TestCases](docs/diagrams/TestCases.png)

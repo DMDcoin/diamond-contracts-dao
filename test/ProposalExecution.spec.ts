@@ -42,7 +42,7 @@ describe("DAO proposal execution", function () {
     const mockValidatorSet = await mockFactory.deploy();
     await mockValidatorSet.waitForDeployment();
 
-    const mockStaking = await stakingFactory.deploy();
+    const mockStaking = await stakingFactory.deploy(await mockValidatorSet.getAddress());
     await mockStaking.waitForDeployment();
 
     const startTime = await time.latest();
@@ -51,6 +51,7 @@ describe("DAO proposal execution", function () {
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
+      ethers.ZeroAddress,
       createProposalFee,
       startTime + 10
     ], {
@@ -168,27 +169,27 @@ describe("DAO proposal execution", function () {
 
   describe("self function calls", async function () {
     it("should not allow to set createProposalFee = 0", async function () {
-      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const proposer = users[2];
+      const { dao } = await loadFixture(deployFixture);
 
-      const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [0n]);
+      const newVal = 0n;
+      const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [newVal]);
 
-      const { proposalId } = await finalizedProposal(
-        dao,
-        mockValidatorSet,
-        mockStaking,
-        Vote.Yes,
+      await expect(dao.connect(proposer).propose(
         [await dao.getAddress()],
         [0n],
-        [calldata]
-      );
-
-      await expect(dao.execute(proposalId)).to.be.revertedWithCustomError(dao, "InvalidArgument");
+        [calldata],
+        "title",
+        "test",
+        "url",
+        { value: createProposalFee }
+      )).to.be.revertedWithCustomError(dao, "NewValueOutOfRange").withArgs(newVal);
     });
 
     it("should update createProposalFee using proposal", async function () {
+      const proposer = users[2];
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
-
-      const newFeeValue = ethers.parseEther('111');
+      const newFeeValue = ethers.parseEther('20');
       const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [newFeeValue]);
 
       const { proposalId } = await finalizedProposal(
@@ -201,16 +202,74 @@ describe("DAO proposal execution", function () {
         [calldata]
       );
 
-      await expect(dao.execute(proposalId))
+      await expect(dao.connect(proposer).execute(proposalId))
         .to.emit(dao, "SetCreateProposalFee")
         .withArgs(newFeeValue);
 
       expect(await dao.createProposalFee()).to.equal(newFeeValue);
     });
+
+    it("should update createProposalFee and refund original fee to proposers", async function () {
+      const firstProposer = users[2];
+      const secondProposer = users[3];
+      const voters = users.slice(5, 15);
+
+      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const originalFeeValue = createProposalFee;
+      const newFeeValue = ethers.parseEther('20');
+      const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [newFeeValue]);
+
+      const { proposalId: firstProposalId } = await createProposal(
+        dao,
+        firstProposer,
+        getRandomBigInt().toString(),
+        [await dao.getAddress()],
+        [0n],
+        [calldata]
+      );
+
+      const { proposalId: secondProposalId } = await createProposal(
+        dao,
+        secondProposer,
+        getRandomBigInt().toString(),
+        [await dao.getAddress()],
+        [0n],
+        [calldata]
+      );      
+
+      await addValidatorsStake(mockValidatorSet, mockStaking, voters);
+      await swithPhase(dao);
+      await vote(dao, firstProposalId, voters, Vote.Yes);
+      await vote(dao, secondProposalId, voters, Vote.Yes);
+      await swithPhase(dao);
+
+      await expect(
+        await dao.finalize(firstProposalId)
+      ).to.changeEtherBalances(
+        [await dao.getAddress(), firstProposer.address],
+        [-originalFeeValue, originalFeeValue]
+      );
+
+      await expect(dao.connect(firstProposer).execute(firstProposalId))
+        .to.emit(dao, "SetCreateProposalFee")
+        .withArgs(newFeeValue);
+
+      expect(await dao.createProposalFee()).to.equal(newFeeValue);
+
+      // even after fee is changed the user should get his original fee back\
+      await expect(
+        await dao.finalize(secondProposalId)
+      ).to.changeEtherBalances(
+        [await dao.getAddress(), secondProposer.address],
+        [-originalFeeValue, originalFeeValue]
+      );
+    });
   });
 
   describe("self upgrade", async function () {
     it("should perform DAO self upgrade", async function () {
+      const proposer = users[2];
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
       const daoAddress = await dao.getAddress();
@@ -245,9 +304,9 @@ describe("DAO proposal execution", function () {
         [calldata]
       );
 
-      await expect(dao.execute(proposalId))
+      await expect(dao.connect(proposer).execute(proposalId))
         .to.emit(dao, "ProposalExecuted")
-        .withArgs(users[0].address, proposalId);
+        .withArgs(proposer.address, proposalId);
 
       expect(await upgrades.erc1967.getImplementationAddress(daoAddress)).to.equal(newImplementation);
     });

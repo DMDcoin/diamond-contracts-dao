@@ -47,7 +47,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
     const mockValidatorSet = await mockFactory.deploy();
     await mockValidatorSet.waitForDeployment();
 
-    const mockStaking = await stakingFactory.deploy();
+    const mockStaking = await stakingFactory.deploy(await mockValidatorSet.getAddress());
     await mockStaking.waitForDeployment();
 
     const startTime = await time.latest();
@@ -56,6 +56,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
+      ethers.ZeroAddress,
       createProposalFee,
       startTime + 10
     ], {
@@ -173,6 +174,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
 
   describe("proposal Value Guards", async function () {
     it("should set staking contract as isCoreContract", async function () {
+      const proposer = users[2];
       const calldata = dao.interface.encodeFunctionData("setIsCoreContract", [await mockStaking.getAddress(), true]);
 
       const { proposalId } = await finalizedProposal(
@@ -185,21 +187,28 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
         [calldata]
       );
 
-      await expect(dao.execute(proposalId)).to.emit(dao, "SetIsCoreContract").withArgs(await mockStaking.getAddress(), true);
+      await expect(dao.connect(proposer).execute(proposalId)).to.emit(dao, "SetIsCoreContract").withArgs(await mockStaking.getAddress(), true);
     });
 
-    it("should fail to propose ecosystem parameter change as not allowed", async function () {
-      const proposer = users[2];
-      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['50000000000000000000']);
+    it("should fail to propose as ecosystem parameter change", async function () {
+      const newVal = '50000000000000000000';
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", [newVal]);
 
       const targets = [await mockStaking.getAddress()];
       const values = [0n];
       const calldatas = [calldata];
-      const description = "test";
 
-      await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
-      ).to.be.revertedWithCustomError(dao, "OutOfAllowedRange");
+      const { proposalId } = await finalizedProposal(
+        dao,
+        mockValidatorSet,
+        mockStaking,
+        Vote.Yes,
+        targets,
+        values,
+        calldatas
+      );
+     
+      expect((await dao.getProposal(proposalId)).proposalType).to.equal(1);
     });
 
     it("should set setChangeAbleParameters", async function () {
@@ -226,7 +235,8 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
 
     it("should fail to propose ecosystem parameter change as invalid upgrade value", async function () {
       const proposer = users[2];
-      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['200000000000000000000']);
+      const newVal = '200000000000000000000';
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", [newVal]);
 
       const targets = [await mockStaking.getAddress()];
       const values = [0n];
@@ -235,7 +245,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
 
       await expect(
         dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
-      ).to.be.revertedWithCustomError(dao, "OutOfAllowedRange");
+      ).to.be.revertedWithCustomError(dao, "NewValueOutOfRange").withArgs(newVal);
     });
 
     it("should successfully propose ecosystem parameter change increment", async function () {
@@ -265,7 +275,8 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           calldatas,
           "title",
           description,
-          "url"
+          "url",
+          createProposalFee
         );
     });
 
@@ -296,7 +307,8 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           calldatas,
           "title",
           description,
-          "url"
+          "url",
+          createProposalFee
         );
 
       expect((await dao.getProposal(proposalId)).proposalType).to.equal(2);
@@ -329,10 +341,36 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           calldatas,
           "title",
           description,
-          "url"
+          "url",
+          createProposalFee
         );
 
       expect((await dao.getProposal(proposalId)).proposalType).to.equal(1);
+    });
+
+    it("should propose a ecosystem parameter change and execute it", async function () {
+      const proposer = users[2];
+      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['50000000000000000000']);
+
+      const targets = [await mockStaking.getAddress()];
+      const values = [0n];
+      const calldatas = [calldata];
+
+      const { proposalId } = await finalizedProposal(
+        dao,
+        mockValidatorSet,
+        mockStaking,
+        Vote.Yes,
+        targets,
+        values,
+        calldatas
+      );
+
+      await expect(dao.connect(proposer).execute(proposalId))
+      .to.emit(dao, "ProposalExecuted")
+      .withArgs(proposer.address, proposalId);
+
+      expect(await mockStaking.delegatorMinStake()).to.equal('50000000000000000000');
     });
   });
 });

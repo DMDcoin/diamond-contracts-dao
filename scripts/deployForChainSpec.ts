@@ -35,7 +35,8 @@ async function compileProxy() {
         "0x1000000000000000000000000000000000000001", //address _validatorSet,
         "0x1100000000000000000000000000000000000001", //address _stakingHbbft,
         "0x2000000000000000000000000000000000000001", //address _reinsertPot,
-        ethers.parseEther("1"),//uint256 _createProposalFee,
+        "0x4000000000000000000000000000000000000001", //address _txPermission,
+        ethers.parseEther("10"),//uint256 _createProposalFee,
         startTimeBigInt //uint64 _startTimestamp
     ];
 
@@ -48,6 +49,10 @@ async function compileProxy() {
         balance: "0",
         constructor: proxyDeployTX.data
     };
+    
+    if (!fs.existsSync("out")) {
+        fs.mkdirSync("out");
+    }
     
     fs.writeFileSync("out/spec_dao.json", JSON.stringify(spec));
    //spec[]
