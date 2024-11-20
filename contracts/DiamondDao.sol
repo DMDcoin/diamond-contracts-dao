@@ -38,7 +38,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     ///@dev this is the duration of each DAO phase.
     ///A full DAO cycle consists of 2 phases: Proposal and Voting,
     /// therefore the full cycle duration is double that amount.
-    uint64 public constant DAO_PHASE_DURATION = 1 days;
+    uint64 public constant DAO_PHASE_DURATION = 2 weeks;
 
     address public reinsertPot;
     uint256 public createProposalFee;
