@@ -6,7 +6,7 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-import "diamond-contracts-core/contracts/ValueGuards.sol";
+import "diamond-contracts-core/contracts/lib/ValueGuards.sol";
 import { IDiamondDao } from "./interfaces/IDiamondDao.sol";
 import { IValidatorSetHbbft } from "./interfaces/IValidatorSetHbbft.sol";
 import { IStakingHbbft } from "./interfaces/IStakingHbbft.sol";
@@ -172,9 +172,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         createProposalFeeAllowedParams[7] = 80 ether;
         createProposalFeeAllowedParams[8] = 90 ether;
 
-        initAllowedChangeableParameter(
-            "setCreateProposalFee(uint256)",
-            "createProposalFee()",
+        __initAllowedChangeableParameter(
+            this.setCreateProposalFee.selector,
+            this.createProposalFee.selector,
             createProposalFeeAllowedParams
         );
 

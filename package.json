@@ -34,7 +34,7 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "diamond-contracts-core": "github:DMDcoin/diamond-contracts-core#dev"
+    "diamond-contracts-core": "github:DMDcoin/diamond-contracts-core#master"
   },
   "prettier": "./.prettierrc.json"
 }
