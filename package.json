@@ -9,7 +9,8 @@
     "coverage": "npx hardhat coverage --show-stack-traces --config ./hardhat-coverage.config.ts --solcoverjs ./.solcover.js",
     "update-core": "rm -rf node_modules/diamond-contracts-core && npm install diamond-contracts-core --save --legacy-peer-deps",
     "deployForDaoUpgrade": "npx hardhat run scripts/deployForDaoUpgrade.ts",
-    "switchPhase": "npx hardhat run scripts/switchPhase.ts"
+    "switchPhase": "npx hardhat run scripts/switchPhase.ts",
+    "clean-install": "rm -f package-lock.json && rm -rf node_modules/diamond-contracts-core && npm install"
   },
   "repository": {
     "type": "git",
