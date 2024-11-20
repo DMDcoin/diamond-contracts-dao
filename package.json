@@ -9,6 +9,7 @@
     "coverage": "npx hardhat coverage --show-stack-traces --config ./hardhat-coverage.config.ts --solcoverjs ./.solcover.js",
     "update-core": "rm -rf node_modules/diamond-contracts-core && npm install diamond-contracts-core --save --legacy-peer-deps",
     "deployForDaoUpgrade": "npx hardhat run scripts/deployForDaoUpgrade.ts",
+    "switchPhase": "npx hardhat run scripts/switchPhase.ts",
     "clean-install": "rm -f package-lock.json && rm -rf node_modules/diamond-contracts-core && npm install"
   },
   "repository": {
@@ -33,7 +34,7 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "diamond-contracts-core": "github:DMDcoin/diamond-contracts-core#dev"
+    "diamond-contracts-core": "github:DMDcoin/diamond-contracts-core#master"
   },
   "prettier": "./.prettierrc.json"
 }

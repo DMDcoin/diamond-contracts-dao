@@ -6,7 +6,7 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-import "diamond-contracts-core/contracts/ValueGuards.sol";
+import "diamond-contracts-core/contracts/lib/ValueGuards.sol";
 import { IDiamondDao } from "./interfaces/IDiamondDao.sol";
 import { IValidatorSetHbbft } from "./interfaces/IValidatorSetHbbft.sol";
 import { IStakingHbbft } from "./interfaces/IStakingHbbft.sol";
@@ -34,7 +34,11 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
     uint256 public daoPhaseCount;
     uint256 public constant MAX_NEW_PROPOSALS = 1000;
-    uint64 public constant DAO_PHASE_DURATION = 2 hours;
+
+    ///@dev this is the duration of each DAO phase.
+    ///A full DAO cycle consists of 2 phases: Proposal and Voting,
+    /// therefore the full cycle duration is double that amount.
+    uint64 public constant DAO_PHASE_DURATION = 2 weeks;
 
     address public reinsertPot;
     uint256 public createProposalFee;
@@ -168,9 +172,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         createProposalFeeAllowedParams[7] = 80 ether;
         createProposalFeeAllowedParams[8] = 90 ether;
 
-        initAllowedChangeableParameter(
-            "setCreateProposalFee(uint256)",
-            "createProposalFee()",
+        __initAllowedChangeableParameter(
+            this.setCreateProposalFee.selector,
+            this.createProposalFee.selector,
             createProposalFeeAllowedParams
         );
 
