@@ -58,7 +58,7 @@ const config: HardhatUserConfig = {
               yul: true,
             },
           },
-          evmVersion: "istanbul"
+          evmVersion: "london"
         },
       },
     ]
