@@ -576,25 +576,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     }
 
     /**
-     * @dev Retrieves the current value from a contract using the provided function selector.
-     * @param contractAddress The address of the contract to call.
-     * @param funcSelector The function selector to use for the call.
-     * @return The current value returned by the contract.
-     */
-    function _getCurrentValWithSelector(address contractAddress, string memory funcSelector) private view returns(uint256) {
-        bytes memory selectorBytes = abi.encodeWithSelector(bytes4(keccak256(bytes(funcSelector))));
-
-        (bool success, bytes memory data) = contractAddress.staticcall(selectorBytes);
-        if (!success) revert ContractCallFailed(selectorBytes, contractAddress);
-
-        uint256 result;
-        assembly {
-            result := mload(add(data, 0x20))
-        }
-        return result;
-    }
-
-    /**
      * @dev Extracts the function selector and value from the given call data.
      * @param _data The call data to extract from.
      * @return funcSelector The function selector extracted from the call data.
