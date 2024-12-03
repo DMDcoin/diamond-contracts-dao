@@ -1,7 +1,7 @@
 node_modules/
 cache/
 artifacts/
-.mnemonic
+.mnemonic*
 
 # diamond-contracts-dao specific
 out/
