@@ -340,7 +340,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
         _saveVotingResult(proposalId, result);
 
-        bool accepted = quorumReached(proposal.proposalType, result);
+        bool accepted = quorumReached(proposalId, proposal.proposalType, result);
 
         proposal.state = accepted ? ProposalState.Accepted : ProposalState.Declined;
 
@@ -452,9 +452,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
      * @param result The voting result containing the counts of "yes" and "no" votes.
      * @return A boolean indicating whether the quorum has been reached.
      */
-    function quorumReached(ProposalType _type, VotingResult memory result) public view returns (bool) {
+    function quorumReached(uint256 proposalId, ProposalType _type, VotingResult memory result) public view returns (bool) {
         uint256 requiredExceeding;
         uint256 totalStakedAmount = _getTotalStakedAmount();
+        uint256 totalVotes = _proposalVoters[proposalId].length();
 
         if (_type == ProposalType.ContractUpgrade) {
             requiredExceeding = totalStakedAmount * (50 * 100) / 10000;
@@ -462,7 +463,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
             requiredExceeding = totalStakedAmount * (33 * 100) / 10000;
         }
 
-        return result.stakeYes >= result.stakeNo + requiredExceeding;
+        return totalVotes > 0 && result.stakeYes >= result.stakeNo + requiredExceeding;
     }
 
     function hashProposal(
