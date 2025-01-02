@@ -80,6 +80,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     /// @dev To keep track of the last DAO phase count for unfinalized proposals check
     uint256 public lastDaoPhaseCount;
 
+    /// @dev daoEpoch => totalStakeSnapshot - Total stake amount snapshot on voting finalization
+    mapping(uint256 => uint256) public daoEpochTotalStakeSnapshot;
+
     modifier exists(uint256 proposalId) {
         if (!proposalExists(proposalId)) {
             revert ProposalNotExist(proposalId);
@@ -454,8 +457,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
      */
     function quorumReached(uint256 proposalId, ProposalType _type, VotingResult memory result) public view returns (bool) {
         uint256 requiredExceeding;
-        uint256 totalStakedAmount = _getTotalStakedAmount();
         uint256 totalVotes = _proposalVoters[proposalId].length();
+
+        uint256 daoEpoch = proposals[proposalId].votingDaoEpoch;
+        uint256 totalStakedAmount = daoEpochTotalStakeSnapshot[daoEpoch];
 
         if (_type == ProposalType.ContractUpgrade) {
             requiredExceeding = totalStakedAmount * (50 * 100) / 10000;
@@ -490,9 +495,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         for (uint256 i = 0; i < daoEpochVoters.length; ++i) {
             address voter = daoEpochVoters[i];
             uint256 stakeAmount = stakingHbbft.stakeAmountTotal(voter);
-
             daoEpochStakeSnapshot[daoEpoch][voter] = stakeAmount;
         }
+
+        daoEpochTotalStakeSnapshot[daoEpoch] = stakingHbbft.totalStakedAmount();
     }
 
     function _submitVote(
@@ -655,9 +661,5 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
                 return ProposalType.ContractUpgrade;
             }
         }
-    }
-
-    function _getTotalStakedAmount() private view returns (uint256) {
-        return stakingHbbft.totalStakedAmount();
     }
 }
