@@ -531,7 +531,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     function _executeOperations(
         address[] memory targets,
         uint256[] memory values,
-        bytes[] memory calldatas,
+        bytes[] memory calldatas
     ) private {
         for (uint256 i = 0; i < targets.length; ++i) {
             uint256 execValue = calldatas[i].length == 0 ? values[i] : 0;
