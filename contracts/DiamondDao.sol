@@ -38,7 +38,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     ///@dev this is the duration of each DAO phase.
     ///A full DAO cycle consists of 2 phases: Proposal and Voting,
     /// therefore the full cycle duration is double that amount.
-    uint64 public constant DAO_PHASE_DURATION = 2 weeks;
+    uint64 public constant DAO_PHASE_DURATION = 24 hours;
 
     address public reinsertPot;
     uint256 public createProposalFee;
@@ -573,25 +573,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
     function _isValidator(address stakingAddress) private view returns (bool) {
         return stakingHbbft.isPoolValid(stakingAddress);
-    }
-
-    /**
-     * @dev Retrieves the current value from a contract using the provided function selector.
-     * @param contractAddress The address of the contract to call.
-     * @param funcSelector The function selector to use for the call.
-     * @return The current value returned by the contract.
-     */
-    function _getCurrentValWithSelector(address contractAddress, string memory funcSelector) private view returns(uint256) {
-        bytes memory selectorBytes = abi.encodeWithSelector(bytes4(keccak256(bytes(funcSelector))));
-
-        (bool success, bytes memory data) = contractAddress.staticcall(selectorBytes);
-        if (!success) revert ContractCallFailed(selectorBytes, contractAddress);
-
-        uint256 result;
-        assembly {
-            result := mload(add(data, 0x20))
-        }
-        return result;
     }
 
     /**
