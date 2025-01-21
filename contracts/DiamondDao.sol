@@ -217,7 +217,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
         bool snapshotStakes = stateToSet == ProposalState.VotingFinished;
 
-        for (uint256 i = 0; i < currentPhaseProposals.length; ++i) {
+        uint256 proposalsLength = currentPhaseProposals.length;
+        for (uint256 i = 0; i < proposalsLength; ++i) {
             uint256 proposalId = currentPhaseProposals[i];
 
             proposals[proposalId].state = stateToSet;
