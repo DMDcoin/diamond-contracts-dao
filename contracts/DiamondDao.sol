@@ -199,7 +199,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         emit SetIsCoreContract(_add, isCore);
     }
 
-    function switchPhase() external {
+    function switchPhase() external nonReentrant {
         if (block.timestamp < daoPhase.end) {
             return;
         }
@@ -249,7 +249,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         string memory title,
         string memory description,
         string memory discussionUrl
-    ) external payable onlyPhase(Phase.Proposal) noUnfinalizedProposals {
+    ) external payable nonReentrant onlyPhase(Phase.Proposal) noUnfinalizedProposals {
         if (
             targets.length != values.length ||
             targets.length != calldatas.length ||
@@ -336,7 +336,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         emit SubmitVoteWithReason(voter, proposalId, _vote, reason);
     }
 
-    function finalize(uint256 proposalId) external exists(proposalId) {
+    function finalize(uint256 proposalId) external nonReentrant exists(proposalId) {
         _requireState(proposalId, ProposalState.VotingFinished);
 
         Proposal storage proposal = proposals[proposalId];
