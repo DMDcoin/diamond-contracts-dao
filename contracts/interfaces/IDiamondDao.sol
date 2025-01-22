@@ -20,24 +20,24 @@ interface IDiamondDao {
 
     event ProposalExecuted(address indexed caller, uint256 indexed proposalId);
 
-    event VotingFinalized(address indexed caller, uint256 indexed proposalId, bool accepted);
+    event VotingFinalized(address indexed caller, uint256 indexed proposalId, bool indexed accepted);
 
-    event SubmitVote(address indexed voter, uint256 indexed proposalId, Vote vote);
+    event SubmitVote(address indexed voter, uint256 indexed proposalId, Vote indexed vote);
 
     event SubmitVoteWithReason(
         address indexed voter,
         uint256 indexed proposalId,
-        Vote vote,
+        Vote indexed vote,
         string reason
     );
 
-    event SwitchDaoPhase(Phase phase, uint256 start, uint256 end);
+    event SwitchDaoPhase(Phase indexed phase, uint256 indexed start, uint256 indexed end);
 
-    event SetCreateProposalFee(uint256 fee);
+    event SetCreateProposalFee(uint256 indexed fee);
 
-    event SetIsCoreContract(address contractAddress, bool isCore);
+    event SetIsCoreContract(address indexed contractAddress, bool indexed isCore);
 
-    event SetChangeAbleParameters(bool allowed, string setter, string getter, uint256[] params);
+    event SetChangeAbleParameters(bool indexed allowed, string setter, string getter, uint256[] params);
 
     error InsufficientFunds();
     error InvalidArgument();
