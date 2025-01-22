@@ -200,15 +200,16 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     }
 
     function switchPhase() external nonReentrant {
-        if (block.timestamp < daoPhase.end) {
+        uint64 currentTimestamp = uint64(block.timestamp);
+
+        if (currentTimestamp < daoPhase.end) {
             return;
         }
 
         Phase newPhase = daoPhase.phase == Phase.Proposal ? Phase.Voting : Phase.Proposal;
 
-        uint64 newPhaseStart = daoPhase.end + 1;
-        daoPhase.start = newPhaseStart;
-        daoPhase.end = newPhaseStart + DAO_PHASE_DURATION;
+        daoPhase.start = currentTimestamp;
+        daoPhase.end = currentTimestamp + DAO_PHASE_DURATION;
         daoPhase.phase = newPhase;
 
         ProposalState stateToSet = newPhase == Phase.Voting
