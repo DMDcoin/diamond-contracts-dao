@@ -52,8 +52,6 @@ interface IDiamondDao {
     error UnavailableInCurrentPhase(Phase phase);
     error UnexpectedProposalState(uint256 proposalId, ProposalState state);
     error ContractCallFailed(bytes funcSelector, address targetContract);
-    error FunctionUpgradeNotAllowed(bytes4 funcSelector, address targetContract);
-    error InvalidUpgradeValue(uint256 currentVal, uint256 newVal);
     error UnfinalizedProposalsExist();
     error OutsideExecutionWindow(uint256 proposalId);
     error NotProposer(uint256 proposalId, address caller);
