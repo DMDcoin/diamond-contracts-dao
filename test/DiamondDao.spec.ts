@@ -23,7 +23,6 @@ enum DaoPhase {
 }
 
 enum Vote {
-  Abstain,
   No,
   Yes
 }
