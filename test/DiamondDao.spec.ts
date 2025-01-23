@@ -60,6 +60,7 @@ describe("DiamondDao contract", function () {
     const startTime = await time.latest();
 
     const daoProxy = await upgrades.deployProxy(daoFactory, [
+      users[0].address,
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
@@ -149,6 +150,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         upgrades.deployProxy(daoFactory, [
+          users[0].address,
           ethers.ZeroAddress,
           users[1].address,
           users[2].address,
@@ -167,6 +169,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         upgrades.deployProxy(daoFactory, [
+          users[0].address,
           users[1].address,
           ethers.ZeroAddress,
           users[2].address,
@@ -185,6 +188,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         upgrades.deployProxy(daoFactory, [
+          users[0].address,
           users[1].address,
           users[2].address,
           ethers.ZeroAddress,
@@ -203,6 +207,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         upgrades.deployProxy(daoFactory, [
+          users[0].address,
           users[1].address,
           users[2].address,
           users[3].address,
@@ -221,6 +226,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         upgrades.deployProxy(daoFactory, [
+          users[0].address,
           users[1].address,
           users[2].address,
           users[3].address,
@@ -238,6 +244,7 @@ describe("DiamondDao contract", function () {
       const startTime = await time.latest();
 
       const dao = await upgrades.deployProxy(daoFactory, [
+        users[0].address,
         users[1].address,
         users[2].address,
         users[3].address,
@@ -252,6 +259,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         dao.initialize(
+          users[0].address,
           users[1].address,
           users[2].address,
           users[3].address,

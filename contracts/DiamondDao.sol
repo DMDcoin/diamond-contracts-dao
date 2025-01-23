@@ -131,6 +131,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     }
 
     function initialize(
+        address _contractOwner,
         address _validatorSet,
         address _stakingHbbft,
         address _reinsertPot,
@@ -151,6 +152,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
             revert InvalidStartTimestamp();
         }
 
+        __Ownable_init(_contractOwner);
         __ReentrancyGuard_init();
 
         validatorSet = IValidatorSetHbbft(_validatorSet);

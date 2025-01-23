@@ -48,6 +48,7 @@ describe("DAO proposal execution", function () {
     const startTime = await time.latest();
 
     const daoProxy = await upgrades.deployProxy(daoFactory, [
+      users[0].address,
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
