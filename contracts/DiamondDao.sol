@@ -544,7 +544,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         _requireState(proposalId, ProposalState.Active);
 
         if (_proposalVoters[proposalId].contains(voter)) {
-            revert AlreadyVoted(proposalId, voter, _vote);
+            revert AlreadyVoted(proposalId, voter);
         }
 
         _daoEpochVoters[daoPhase.daoEpoch].add(voter);

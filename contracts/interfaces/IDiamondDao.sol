@@ -58,7 +58,7 @@ interface IDiamondDao {
     error OutsideExecutionWindow(uint256 proposalId);
     error NotProposer(uint256 proposalId, address caller);
     error SameVote(uint256 proposalId, address vote, Vote _vote);
-    error AlreadyVoted(uint256 proposalId, address voter, Vote vote);
+    error AlreadyVoted(uint256 proposalId, address voter);
     error NoVoteFound(uint256 proposalId, address voter);
 
     function propose(

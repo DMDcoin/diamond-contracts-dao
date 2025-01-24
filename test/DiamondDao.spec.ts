@@ -915,6 +915,25 @@ describe("DiamondDao contract", function () {
   });
 
   describe("changeVote", async function () {
+    it("should revert in case of double voting", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await dao.connect(voter).vote(proposalId, Vote.Yes);
+
+      await expect(
+        dao.connect(voter).vote(proposalId, Vote.No)
+      ).to.be.revertedWithCustomError(dao, "AlreadyVoted")
+        .withArgs(proposalId, voter.address);
+    });
+
     it("should revert change vote if voter has not voted yet", async function () {
       const { dao, mockValidatorSet } = await loadFixture(deployFixture);
 
@@ -928,8 +947,27 @@ describe("DiamondDao contract", function () {
 
       await expect(
         dao.connect(voter).changeVote(proposalId, Vote.Yes, "reason")
-      ).to.be.revertedWithCustomError(dao, "VoteNotExist")
+      ).to.be.revertedWithCustomError(dao, "NoVoteFound")
         .withArgs(proposalId, voter.address);
+    });
+
+    it("should revert if same vote is submitted", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await dao.connect(voter).voteWithReason(proposalId, Vote.Yes, "reason");
+
+      await expect(
+        dao.connect(voter).changeVote(proposalId, Vote.Yes, "reason")
+      ).to.be.revertedWithCustomError(dao, "SameVote")
+        .withArgs(proposalId, voter.address, Vote.Yes);
     });
 
     it("should allow user to change vote", async function () {
