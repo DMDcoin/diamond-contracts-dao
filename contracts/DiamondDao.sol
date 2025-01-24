@@ -339,6 +339,36 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         emit SubmitVoteWithReason(voter, proposalId, _vote, reason);
     }
 
+    function changeVote(
+        uint256 proposalId,
+        Vote _vote,
+        string calldata reason
+    ) external exists(proposalId) onlyPhase(Phase.Voting) onlyValidator {
+        if (!_proposalVoters[proposalId].contains(msg.sender)) {
+            revert NoVoteFound(proposalId, msg.sender);
+        }
+
+        address voter = msg.sender;
+
+        Proposal storage proposal = proposals[proposalId];
+
+        if (proposal.state != ProposalState.Active) {
+            revert UnexpectedProposalState(proposalId, proposal.state);
+        }
+
+        VoteRecord storage voteRecord = votes[proposalId][voter];
+
+        if (voteRecord.vote == _vote && keccak256(bytes(voteRecord.reason)) == keccak256(bytes(reason))) {
+            revert SameVote(proposalId, voter, _vote);
+        }
+
+        voteRecord.vote = _vote;
+        voteRecord.reason = reason;
+        voteRecord.timestamp = uint64(block.timestamp);
+
+        emit ChangeVote(voter, proposalId, _vote, reason);
+    }
+
     function finalize(uint256 proposalId) external nonReentrant exists(proposalId) {
         _requireState(proposalId, ProposalState.VotingFinished);
 
@@ -512,6 +542,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         string memory reason
     ) private {
         _requireState(proposalId, ProposalState.Active);
+
+        if (_proposalVoters[proposalId].contains(voter)) {
+            revert AlreadyVoted(proposalId, voter, _vote);
+        }
 
         _daoEpochVoters[daoPhase.daoEpoch].add(voter);
         _proposalVoters[proposalId].add(voter);

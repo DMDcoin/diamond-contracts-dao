@@ -31,6 +31,8 @@ interface IDiamondDao {
         string reason
     );
 
+    event ChangeVote(address indexed voter, uint256 indexed proposalId, Vote indexed vote, string reason);
+
     event SwitchDaoPhase(Phase indexed phase, uint256 indexed start, uint256 indexed end);
 
     event SetCreateProposalFee(uint256 indexed fee);
@@ -55,6 +57,9 @@ interface IDiamondDao {
     error UnfinalizedProposalsExist();
     error OutsideExecutionWindow(uint256 proposalId);
     error NotProposer(uint256 proposalId, address caller);
+    error SameVote(uint256 proposalId, address vote, Vote _vote);
+    error AlreadyVoted(uint256 proposalId, address voter, Vote vote);
+    error NoVoteFound(uint256 proposalId, address voter);
 
     function propose(
         address[] memory targets,
