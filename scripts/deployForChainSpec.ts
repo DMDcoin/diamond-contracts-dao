@@ -32,6 +32,7 @@ async function compileProxy() {
     let startTimeBigInt = BigInt(Math.floor(startTimeStamp));
     
     let daoInitArgs: any[] = [
+        daoProxyAddress, //address _contractOwner,
         "0x1000000000000000000000000000000000000001", //address _validatorSet,
         "0x1100000000000000000000000000000000000001", //address _stakingHbbft,
         "0x2000000000000000000000000000000000000001", //address _reinsertPot,

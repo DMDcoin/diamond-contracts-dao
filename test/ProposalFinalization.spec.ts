@@ -8,7 +8,6 @@ import { DiamondDao, MockStakingHbbft, MockValidatorSetHbbft } from "../typechai
 const EmptyBytes = ethers.hexlify(new Uint8Array());
 
 enum Vote {
-  Abstain,
   No,
   Yes
 }
@@ -62,6 +61,7 @@ describe("Proposal Acceptance Threshold", function () {
     const startTime = await time.latest();
 
     const daoProxy = await upgrades.deployProxy(daoFactory, [
+      users[0].address,
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
