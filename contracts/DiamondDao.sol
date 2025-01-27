@@ -34,6 +34,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
     uint256 public daoPhaseCount;
     uint256 public constant MAX_NEW_PROPOSALS = 1000;
+    uint256 public constant REQUIRED_EXCEEDING_50_PERCENT = 50 * 100;
+    uint256 public constant REQUIRED_EXCEEDING_33_PERCENT = 33 * 100;
 
     ///@dev this is the duration of each DAO phase.
     ///A full DAO cycle consists of 2 phases: Proposal and Voting,
@@ -167,15 +169,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         daoPhaseCount = 1;
 
         uint256[] memory createProposalFeeAllowedParams = new uint256[](9);
-        createProposalFeeAllowedParams[0] = 10 ether;
-        createProposalFeeAllowedParams[1] = 20 ether;
-        createProposalFeeAllowedParams[2] = 30 ether;
-        createProposalFeeAllowedParams[3] = 40 ether;
-        createProposalFeeAllowedParams[4] = 50 ether;
-        createProposalFeeAllowedParams[5] = 60 ether;
-        createProposalFeeAllowedParams[6] = 70 ether;
-        createProposalFeeAllowedParams[7] = 80 ether;
-        createProposalFeeAllowedParams[8] = 90 ether;
+        for (uint256 i = 0; i < 9; ++i) {
+            createProposalFeeAllowedParams[i] = (i + 1) * 10 ether;
+        }
 
         __initAllowedChangeableParameter(
             this.setCreateProposalFee.selector,
@@ -497,9 +493,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         uint256 totalStakedAmount = daoEpochTotalStakeSnapshot[daoEpoch];
 
         if (_type == ProposalType.ContractUpgrade) {
-            requiredExceeding = totalStakedAmount * (50 * 100) / 10000;
+            requiredExceeding = totalStakedAmount * REQUIRED_EXCEEDING_50_PERCENT / 10000;
         } else {
-            requiredExceeding = totalStakedAmount * (33 * 100) / 10000;
+            requiredExceeding = totalStakedAmount * REQUIRED_EXCEEDING_33_PERCENT / 10000;
         }
 
         return totalVotes > 0 && result.stakeYes >= result.stakeNo + requiredExceeding;
