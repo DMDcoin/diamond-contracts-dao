@@ -23,7 +23,6 @@ enum DaoPhase {
 }
 
 enum Vote {
-  Abstain,
   No,
   Yes
 }
@@ -60,6 +59,7 @@ describe("DiamondDao contract", function () {
     const startTime = await time.latest();
 
     const daoProxy = await upgrades.deployProxy(daoFactory, [
+      users[0].address,
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
@@ -142,6 +142,17 @@ describe("DiamondDao contract", function () {
     }
   }
 
+  async function changeVote(
+    dao: DiamondDao,
+    proposalId: bigint,
+    voters: HardhatEthersSigner[],
+    vote: Vote
+  ) {
+    for (const voter of voters) {
+      await dao.connect(voter).changeVote(proposalId, vote, "");
+    }
+  }
+
   describe("initializer", async function () {
     it("should not deploy contract with invalid ValidatorSet address", async function () {
       const daoFactory = await ethers.getContractFactory("DiamondDao");
@@ -149,6 +160,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         upgrades.deployProxy(daoFactory, [
+          users[0].address,
           ethers.ZeroAddress,
           users[1].address,
           users[2].address,
@@ -167,6 +179,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         upgrades.deployProxy(daoFactory, [
+          users[0].address,
           users[1].address,
           ethers.ZeroAddress,
           users[2].address,
@@ -185,6 +198,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         upgrades.deployProxy(daoFactory, [
+          users[0].address,
           users[1].address,
           users[2].address,
           ethers.ZeroAddress,
@@ -203,6 +217,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         upgrades.deployProxy(daoFactory, [
+          users[0].address,
           users[1].address,
           users[2].address,
           users[3].address,
@@ -221,6 +236,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         upgrades.deployProxy(daoFactory, [
+          users[0].address,
           users[1].address,
           users[2].address,
           users[3].address,
@@ -238,6 +254,7 @@ describe("DiamondDao contract", function () {
       const startTime = await time.latest();
 
       const dao = await upgrades.deployProxy(daoFactory, [
+        users[0].address,
         users[1].address,
         users[2].address,
         users[3].address,
@@ -252,6 +269,7 @@ describe("DiamondDao contract", function () {
 
       await expect(
         dao.initialize(
+          users[0].address,
           users[1].address,
           users[2].address,
           users[3].address,
@@ -896,6 +914,93 @@ describe("DiamondDao contract", function () {
     });
   });
 
+  describe("changeVote", async function () {
+    it("should revert in case of double voting", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await dao.connect(voter).vote(proposalId, Vote.Yes);
+
+      await expect(
+        dao.connect(voter).vote(proposalId, Vote.No)
+      ).to.be.revertedWithCustomError(dao, "AlreadyVoted")
+        .withArgs(proposalId, voter.address);
+    });
+
+    it("should revert change vote if voter has not voted yet", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(voter).changeVote(proposalId, Vote.Yes, "reason")
+      ).to.be.revertedWithCustomError(dao, "NoVoteFound")
+        .withArgs(proposalId, voter.address);
+    });
+
+    it("should revert if same vote is submitted", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await dao.connect(voter).voteWithReason(proposalId, Vote.Yes, "reason");
+
+      await expect(
+        dao.connect(voter).changeVote(proposalId, Vote.Yes, "reason")
+      ).to.be.revertedWithCustomError(dao, "SameVote")
+        .withArgs(proposalId, voter.address, Vote.Yes);
+    });
+
+    it("should allow user to change vote", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await dao.connect(voter).vote(proposalId, Vote.Yes);
+      await expect(dao.connect(voter).changeVote(proposalId, Vote.No, "reason")).to.not.be.reverted;
+    });
+
+    it("should allow user to change vote reason", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer, "a");
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await dao.connect(voter).voteWithReason(proposalId, Vote.Yes, "reason");
+      await expect(dao.connect(voter).changeVote(proposalId, Vote.No, "new reason")).to.not.be.reverted;
+    });
+  });
+
   describe("countVotes", async function () {
     it("should revert count votes for non-existing proposal", async function () {
       const { dao } = await loadFixture(deployFixture);
@@ -955,7 +1060,7 @@ describe("DiamondDao contract", function () {
         0n
       ]);
 
-      await vote(dao, proposalId, voters, Vote.No);
+      await changeVote(dao, proposalId, voters, Vote.No);
 
       expect(Object.values(await dao.countVotes(proposalId))).to.deep.equal([
         0n,
