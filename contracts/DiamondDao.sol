@@ -85,7 +85,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     /// @dev daoEpoch => totalStakeSnapshot - Total stake amount snapshot on voting finalization
     mapping(uint256 => uint256) public daoEpochTotalStakeSnapshot;
 
-    uint256[] public previousPhaseProposals;
+    /// @dev daoPhaseCount => proposals[] - DAO phase proposals 
+    mapping(uint256 => uint256[]) public daoPhaseProposals;
 
     modifier exists(uint256 proposalId) {
         if (!proposalExists(proposalId)) {
@@ -236,8 +237,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         }
 
         if (newPhase == Phase.Proposal) {
+            daoPhaseProposals[daoPhaseCount] = currentPhaseProposals;
             daoPhaseCount += 1;
-            previousPhaseProposals = currentPhaseProposals;
             delete currentPhaseProposals;
         }
 
