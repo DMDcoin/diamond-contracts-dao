@@ -34,8 +34,6 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
     uint256 public daoPhaseCount;
     uint256 public constant MAX_NEW_PROPOSALS = 1000;
-    uint256 public constant REQUIRED_EXCEEDING_50_PERCENT = 50 * 100;
-    uint256 public constant REQUIRED_EXCEEDING_33_PERCENT = 33 * 100;
 
     ///@dev this is the duration of each DAO phase.
     ///A full DAO cycle consists of 2 phases: Proposal and Voting,
@@ -492,13 +490,18 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         uint256 daoEpoch = proposals[proposalId].votingDaoEpoch;
         uint256 totalStakedAmount = daoEpochTotalStakeSnapshot[daoEpoch];
 
+        // we have 2 scenarios here:
+        // we either need 1/2 or 1/3 exceeding coins
+        // to most common denominator is 6.
+        // we need to multiply instead of dividing to avoid floating point numbers
         if (_type == ProposalType.ContractUpgrade) {
-            requiredExceeding = totalStakedAmount * REQUIRED_EXCEEDING_50_PERCENT / 10000;
+
+            requiredExceeding = totalStakedAmount * 3; // 3/6 = 1/2
         } else {
-            requiredExceeding = totalStakedAmount * REQUIRED_EXCEEDING_33_PERCENT / 10000;
+            requiredExceeding = totalStakedAmount * 2; // 2/6 = 1/3
         }
 
-        return totalVotes > 0 && result.stakeYes >= result.stakeNo + requiredExceeding;
+        return totalVotes > 0 && result.stakeYes * 6 >= result.stakeNo * 6 + requiredExceeding;
     }
 
     function hashProposal(
