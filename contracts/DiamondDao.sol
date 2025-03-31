@@ -1,28 +1,34 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.25;
 
-import { Address } from '@openzeppelin/contracts/utils/Address.sol';
+import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 import "diamond-contracts-core/contracts/lib/ValueGuards.sol";
 import { IDiamondDao } from "./interfaces/IDiamondDao.sol";
+import { IDiamondDaoLowMajority } from "./interfaces/IDiamondDaoLowMajority.sol";
 import { IValidatorSetHbbft } from "./interfaces/IValidatorSetHbbft.sol";
 import { IStakingHbbft } from "./interfaces/IStakingHbbft.sol";
 import { ICoreValueGuard } from "./interfaces/ICoreValueGuard.sol";
 
 import {
     DaoPhase,
+    OpenProposalMajority,
     Phase,
     Proposal,
     ProposalState,
     ProposalStatistic,
+    ProposalType,
     Vote,
     VoteRecord,
-    VotingResult,
-    ProposalType
+    VotingResult
 } from "./library/DaoStructs.sol"; // prettier-ignore
+
+import { InvalidArgument, OnlyGovernance } from "./library/Errors.sol";
+
+import { QuorumCalculator } from "./library/QuorumCalculator.sol";
 
 /// Diamond DAO central point of operation.
 /// - Manages the DAO funds.
@@ -30,13 +36,14 @@ import {
 /// - Is able to vote for chain settings.
 contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, ValueGuards {
     using EnumerableSet for EnumerableSet.AddressSet;
+    using QuorumCalculator for VotingResult;
 
     /// @notice To make sure we don't exceed the gas limit updating status of proposals
     uint256 public daoPhaseCount;
     uint256 public constant MAX_NEW_PROPOSALS = 1000;
 
-    ///@dev this is the duration of each DAO phase.
-    ///A full DAO cycle consists of 2 phases: Proposal and Voting,
+    /// @dev this is the duration of each DAO phase.
+    /// A full DAO cycle consists of 2 phases: Proposal and Voting,
     /// therefore the full cycle duration is double that amount.
     uint64 public constant DAO_PHASE_DURATION = 24 hours;
 
@@ -53,7 +60,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
     uint256[] public currentPhaseProposals;
 
-    /// @dev Proposal ID to pSeaportroposal data mapping
+    /// @dev Proposal ID to proposal data mapping
     mapping(uint256 => Proposal) public proposals;
 
     /// @dev contract address => is core bool
@@ -83,8 +90,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     /// @dev daoEpoch => totalStakeSnapshot - Total stake amount snapshot on voting finalization
     mapping(uint256 => uint256) public daoEpochTotalStakeSnapshot;
 
-    /// @dev daoPhaseCount => proposals[] - DAO phase proposals 
+    /// @dev daoPhaseCount => proposals[] - DAO phase proposals
     mapping(uint256 => uint256[]) public daoPhaseProposals;
+
+    IDiamondDaoLowMajority public lowMajorityDao;
 
     modifier exists(uint256 proposalId) {
         if (!proposalExists(proposalId)) {
@@ -139,13 +148,17 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         address _stakingHbbft,
         address _reinsertPot,
         address _txPermission,
+        address _lowMajorityDao,
         uint256 _createProposalFee,
         uint64 _startTimestamp
     ) external initializer {
         if (
+            _contractOwner == address(0) ||
             _validatorSet == address(0) ||
             _reinsertPot == address(0) ||
             _stakingHbbft == address(0) ||
+            _txPermission == address(0) ||
+            _lowMajorityDao == address(0) ||
             _createProposalFee == 0
         ) {
             revert InvalidArgument();
@@ -160,6 +173,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
         validatorSet = IValidatorSetHbbft(_validatorSet);
         stakingHbbft = IStakingHbbft(_stakingHbbft);
+        lowMajorityDao = IDiamondDaoLowMajority(_lowMajorityDao);
         reinsertPot = _reinsertPot;
         createProposalFee = _createProposalFee;
 
@@ -184,7 +198,24 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         isCoreContract[_stakingHbbft] = true;
         isCoreContract[_txPermission] = true;
         isCoreContract[_reinsertPot] = true;
-     }
+    }
+
+    function initializeV2(
+        address _contractOwner,
+        address _lowMajorityDao
+    ) external reinitializer(2) {
+         if (_contractOwner == address(0) || _lowMajorityDao == address(0)) {
+            revert InvalidArgument();
+        }
+
+        __Ownable_init(_contractOwner);
+
+        lowMajorityDao = IDiamondDaoLowMajority(_lowMajorityDao);
+
+        isCoreContract[_lowMajorityDao] = true;
+
+        emit SetIsCoreContract(_lowMajorityDao, true);
+    }
 
     function setCreateProposalFee(uint256 _fee) external onlyGovernance withinAllowedRange(_fee) {
         createProposalFee = _fee;
@@ -249,7 +280,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         bytes[] memory calldatas,
         string memory title,
         string memory description,
-        string memory discussionUrl
+        string memory discussionUrl,
+        OpenProposalMajority majority // Affects only open proposal type
     ) external payable nonReentrant onlyPhase(Phase.Proposal) noUnfinalizedProposals {
         if (
             targets.length != values.length ||
@@ -266,8 +298,15 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         if (currentPhaseProposals.length >= MAX_NEW_PROPOSALS) {
             revert NewProposalsLimitExceeded();
         }
-        
+
         ProposalType proposalType = _checkProposalType(targets, calldatas);
+
+        // If proposal calldata decoding results to open proposal and High Majority was explicitly
+        // set by the caller - treat this proposal as Open with required High Majority voting.
+        if (proposalType == ProposalType.OpenLowMajority && majority == OpenProposalMajority.High) {
+            proposalType = ProposalType.OpenHighMajority;
+        }
+
         uint256 proposalId = hashProposal(targets, values, calldatas, description);
 
         if (proposalExists(proposalId)) {
@@ -294,7 +333,17 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         statistic.total += 1;
         unfinalizedProposals += 1;
 
-        emit ProposalCreated(proposer, proposalId, targets, values, calldatas, title, description, discussionUrl, createProposalFee);
+        emit ProposalCreated(
+            proposer,
+            proposalId,
+            targets,
+            values,
+            calldatas,
+            title,
+            description,
+            discussionUrl,
+            createProposalFee
+        );
     }
 
     function cancel(uint256 proposalId, string calldata reason) external exists(proposalId) {
@@ -356,7 +405,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
         VoteRecord storage voteRecord = votes[proposalId][voter];
 
-        if (voteRecord.vote == _vote && keccak256(bytes(voteRecord.reason)) == keccak256(bytes(reason))) {
+        if (
+            voteRecord.vote == _vote &&
+            keccak256(bytes(voteRecord.reason)) == keccak256(bytes(reason))
+        ) {
             revert SameVote(proposalId, voter, _vote);
         }
 
@@ -404,7 +456,16 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
         proposal.state = ProposalState.Executed;
 
-        _executeOperations(proposal.targets, proposal.values, proposal.calldatas);
+        if (proposal.proposalType == ProposalType.OpenLowMajority) {
+            lowMajorityDao.execute(
+                proposalId,
+                proposal.targets,
+                proposal.values,
+                proposal.calldatas
+            );
+        } else {
+            _executeOperations(proposal.targets, proposal.values, proposal.calldatas);
+        }
 
         emit ProposalExecuted(msg.sender, proposalId);
     }
@@ -444,12 +505,16 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
             return _countVotes(proposalId, true);
         } else if (state == ProposalState.Active) {
             return _countVotes(proposalId, false);
-        } {
+        }
+        {
             revert UnexpectedProposalState(proposalId, state);
         }
     }
 
-    function _countVotes(uint256 proposalId, bool useSnapshot) private view returns (VotingResult memory) {
+    function _countVotes(
+        uint256 proposalId,
+        bool useSnapshot
+    ) private view returns (VotingResult memory) {
         uint64 daoEpoch = proposals[proposalId].votingDaoEpoch;
 
         VotingResult memory result;
@@ -487,25 +552,26 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
      * @param result The voting result containing the counts of "yes" and "no" votes.
      * @return A boolean indicating whether the quorum has been reached.
      */
-    function quorumReached(uint256 proposalId, ProposalType _type, VotingResult memory result) public view returns (bool) {
-        uint256 requiredExceeding;
+    function quorumReached(
+        uint256 proposalId,
+        ProposalType _type,
+        VotingResult memory result
+    ) public view returns (bool) {
         uint256 totalVotes = _proposalVoters[proposalId].length();
 
         uint256 daoEpoch = proposals[proposalId].votingDaoEpoch;
         uint256 totalStakedAmount = daoEpochTotalStakeSnapshot[daoEpoch];
+        bool isQuorumReached;
 
-        // we have 2 scenarios here:
-        // we either need 1/2 or 1/3 exceeding coins
-        // to most common denominator is 6.
-        // we need to multiply instead of dividing to avoid floating point numbers
-        if (_type == ProposalType.ContractUpgrade) {
-
-            requiredExceeding = totalStakedAmount * 3; // 3/6 = 1/2
+        if (_type == ProposalType.ContractUpgrade || _type == ProposalType.OpenHighMajority) {
+            isQuorumReached = result.highMajorityQuorum(totalStakedAmount);
+        } else if (_type == ProposalType.OpenLowMajority) {
+            isQuorumReached = lowMajorityDao.quorumReached(result, totalStakedAmount);
         } else {
-            requiredExceeding = totalStakedAmount * 2; // 2/6 = 1/3
+            isQuorumReached = result.lowMajorityQuorum(totalStakedAmount);
         }
 
-        return totalVotes > 0 && result.stakeYes * 6 >= result.stakeNo * 6 + requiredExceeding;
+        return totalVotes > 0 && isQuorumReached;
     }
 
     function hashProposal(
@@ -606,7 +672,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
     function _requireIsExecutable(uint256 _proposalId) private view {
         Proposal memory proposal = getProposal(_proposalId);
-        
+
         if (proposal.daoPhaseCount + 1 != daoPhaseCount) {
             revert OutsideExecutionWindow(_proposalId);
         }
@@ -628,7 +694,9 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
      * @return funcSelector The function selector extracted from the call data.
      * @return value The value extracted from the call data (assuming it's uint256).
      */
-    function _extractCallData(bytes memory _data) private pure returns (bytes4 funcSelector, uint256 value) {
+    function _extractCallData(
+        bytes memory _data
+    ) private pure returns (bytes4 funcSelector, uint256 value) {
         // Extract function selector
         assembly {
             funcSelector := mload(add(_data, 0x20))
@@ -646,8 +714,11 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
      * @param calldatas The array of calldata bytes.
      * @return _type The type of proposal (Open, EcosystemParameterChange, or ContractUpgrade).
      */
-    function _checkProposalType(address[] memory targets, bytes[] memory calldatas) private view returns (ProposalType _type) {
-        _type = ProposalType.Open;
+    function _checkProposalType(
+        address[] memory targets,
+        bytes[] memory calldatas
+    ) private view returns (ProposalType _type) {
+        _type = ProposalType.OpenLowMajority;
 
         for (uint256 i = 0; i < calldatas.length; i++) {
             if (calldatas[i].length == 0) continue;
@@ -666,12 +737,17 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
             );
 
             if (success && result.length > 0) {
-                ICoreValueGuard.ParameterRange memory rangeData = abi.decode(result, (ICoreValueGuard.ParameterRange));
+                ICoreValueGuard.ParameterRange memory rangeData = abi.decode(
+                    result,
+                    (ICoreValueGuard.ParameterRange)
+                );
 
                 if (isCoreContract[targets[i]] && rangeData.range.length > 0) {
                     _type = ProposalType.EcosystemParameterChange;
 
-                    if (!ICoreValueGuard(targets[i]).isWithinAllowedRange(setFuncSelector, newVal)) {
+                    if (
+                        !ICoreValueGuard(targets[i]).isWithinAllowedRange(setFuncSelector, newVal)
+                    ) {
                         revert NewValueOutOfRange(newVal);
                     }
                 } else {
