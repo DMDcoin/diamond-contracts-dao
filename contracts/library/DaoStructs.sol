@@ -11,8 +11,12 @@ enum ProposalState {
     Executed
 }
 
+enum OpenProposalMajority {
+    Low,
+    High
+}
+
 enum Vote {
-    Abstain,
     No,
     Yes
 }
@@ -23,9 +27,10 @@ enum Phase {
 }
 
 enum ProposalType {
-    Open,
+    OpenLowMajority,
     ContractUpgrade,
-    EcosystemParameterChange
+    EcosystemParameterChange,
+    OpenHighMajority
 }
 
 struct DaoPhase {

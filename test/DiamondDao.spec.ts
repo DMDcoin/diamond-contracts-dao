@@ -3,47 +3,39 @@ import { expect } from "chai";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 
-import { DiamondDao, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
+import {
+  DiamondDao,
+  MockDiamondDaoLowMajority,
+  MockStakingHbbft,
+  MockValidatorSetHbbft
+} from "../typechain-types"; // prettier-ignore
 
-const EmptyBytes = ethers.hexlify(new Uint8Array());
+import { DaoPhase } from "./fixture/dao";
 
-enum ProposalState {
-  Created,
-  Canceled,
-  Active,
-  VotingFinished,
-  Accepted,
-  Declined,
-  Executed
-};
+import {
+  createProposal,
+  CreateProposalFee,
+  OpenProposalMajority,
+  ProposalState,
+  Vote
+} from "./fixture/proposal"; // prettier-ignore
 
-enum DaoPhase {
-  Proposal,
-  Voting
-}
-
-enum Vote {
-  Abstain,
-  No,
-  Yes
-}
-
-export function getRandomBigInt(): bigint {
-  let hex = "0x" + Buffer.from(ethers.randomBytes(16)).toString("hex");
-
-  return BigInt(hex);
-}
+import { EmptyBytes, getRandomBigInt } from "./fixture/utils";
 
 describe("DiamondDao contract", function () {
   let users: HardhatEthersSigner[];
+  let owner: HardhatEthersSigner;
   let reinsertPot: HardhatEthersSigner;
 
-  const createProposalFee = ethers.parseEther("50");
+  let randomWallet = () => ethers.Wallet.createRandom().address;
 
-  before(async () => {
-    users = await ethers.getSigners();
+  before(async function () {
+    const signers = await ethers.getSigners();
 
-    reinsertPot = users[1];
+    owner = signers[0]
+    reinsertPot = signers[1];
+
+    users = signers.slice(2);
   });
 
   async function deployFixture() {
@@ -57,57 +49,37 @@ describe("DiamondDao contract", function () {
     const mockStaking = await stakingFactory.deploy(await mockValidatorSet.getAddress());
     await mockStaking.waitForDeployment();
 
+    const mockTxPermission = randomWallet();
+
+    const daoLowMajorityFactory = await ethers.getContractFactory("MockDiamondDaoLowMajority");
+    const daoLowMajority = await upgrades.deployProxy(
+      daoLowMajorityFactory,
+      [owner.address],
+      { initializer: 'initialize' }
+    ) as unknown as MockDiamondDaoLowMajority;
+
+    await daoLowMajority.waitForDeployment();
+
     const startTime = await time.latest();
 
-    const daoProxy = await upgrades.deployProxy(daoFactory, [
+    const dao = (await upgrades.deployProxy(daoFactory, [
+      owner.address,
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
-      ethers.ZeroAddress,
-      createProposalFee,
-      startTime + 1
+      mockTxPermission,
+      await daoLowMajority.getAddress(),
+      CreateProposalFee,
+      startTime + 1,
     ], {
       initializer: "initialize",
-    });
+    })) as unknown as DiamondDao;
 
-    await daoProxy.waitForDeployment();
+    await dao.waitForDeployment();
 
-    const dao = daoFactory.attach(await daoProxy.getAddress()) as DiamondDao;
+    await daoLowMajority.setMainDaoAddress(await dao.getAddress());
 
-    return { dao, mockValidatorSet, mockStaking };
-  }
-
-  async function createProposal(
-    dao: DiamondDao,
-    proposer: HardhatEthersSigner,
-    description?: string,
-    targets?: string[],
-    values?: bigint[],
-    calldatas?: string[]
-  ) {
-    const _targets = targets ? targets : [users[1].address];
-    const _values = values ? values : [ethers.parseEther('100')];
-    const _calldatas = calldatas ? calldatas : [EmptyBytes];
-    const _description = description ? description : "fund user";
-
-    const proposalId = await dao.hashProposal(
-      _targets,
-      _values,
-      _calldatas,
-      _description
-    );
-
-    await dao.connect(proposer).propose(
-      _targets,
-      _values,
-      _calldatas,
-      "title",
-      _description,
-      "url",
-      { value: createProposalFee }
-    );
-
-    return { proposalId, targets, values, calldatas, description }
+    return { dao, daoLowMajority, mockValidatorSet, mockStaking };
   }
 
   async function swithPhase(dao: DiamondDao) {
@@ -142,90 +114,126 @@ describe("DiamondDao contract", function () {
     }
   }
 
+  async function changeVote(
+    dao: DiamondDao,
+    proposalId: bigint,
+    voters: HardhatEthersSigner[],
+    vote: Vote
+  ) {
+    for (const voter of voters) {
+      await dao.connect(voter).changeVote(proposalId, vote, "");
+    }
+  }
+
   describe("initializer", async function () {
-    it("should not deploy contract with invalid ValidatorSet address", async function () {
-      const daoFactory = await ethers.getContractFactory("DiamondDao");
-      const startTime = await time.latest();
+    let InitializeCases = [
+      {
+        name: "contract owner address",
+        contractOwner: ethers.ZeroAddress,
+        validatorSet: randomWallet(),
+        stakingHbbft: randomWallet(),
+        reinsertPot: randomWallet(),
+        txPermission: randomWallet(),
+        lowMajorityDao: randomWallet(),
+        proposalFee: CreateProposalFee,
+      },
+      {
+        name: "ValidatorSet contract address",
+        contractOwner: randomWallet(),
+        validatorSet: ethers.ZeroAddress,
+        stakingHbbft: randomWallet(),
+        reinsertPot: randomWallet(),
+        txPermission: randomWallet(),
+        lowMajorityDao: randomWallet(),
+        proposalFee: CreateProposalFee,
+      },
+      {
+        name: "StakingHbbft contract address",
+        contractOwner: randomWallet(),
+        validatorSet: randomWallet(),
+        stakingHbbft: ethers.ZeroAddress,
+        reinsertPot: randomWallet(),
+        txPermission: randomWallet(),
+        lowMajorityDao: randomWallet(),
+        proposalFee: CreateProposalFee,
+      },
+      {
+        name: "reinsert pot address",
+        contractOwner: randomWallet(),
+        validatorSet: randomWallet(),
+        stakingHbbft: randomWallet(),
+        reinsertPot: ethers.ZeroAddress,
+        txPermission: randomWallet(),
+        lowMajorityDao: randomWallet(),
+        proposalFee: CreateProposalFee,
+      },
+      {
+        name: "TxPermission contract address",
+        contractOwner: randomWallet(),
+        validatorSet: randomWallet(),
+        stakingHbbft: randomWallet(),
+        reinsertPot: randomWallet(),
+        txPermission: ethers.ZeroAddress,
+        lowMajorityDao: randomWallet(),
+        proposalFee: CreateProposalFee,
+      },
+      {
+        name: "DiamondDaoLowMajority contract address",
+        contractOwner: randomWallet(),
+        validatorSet: randomWallet(),
+        stakingHbbft: randomWallet(),
+        reinsertPot: randomWallet(),
+        txPermission: randomWallet(),
+        lowMajorityDao: ethers.ZeroAddress,
+        proposalFee: CreateProposalFee,
+      },
+      {
+        name: "create proposal fee",
+        contractOwner: randomWallet(),
+        validatorSet: randomWallet(),
+        stakingHbbft: randomWallet(),
+        reinsertPot: randomWallet(),
+        txPermission: randomWallet(),
+        lowMajorityDao: randomWallet(),
+        proposalFee: 0n,
+      },
+    ];
 
-      await expect(
-        upgrades.deployProxy(daoFactory, [
-          ethers.ZeroAddress,
-          users[1].address,
-          users[2].address,
-          ethers.ZeroAddress,
-          createProposalFee,
-          startTime + 1
-        ], {
-          initializer: "initialize",
-        })
-      ).to.be.revertedWithCustomError(daoFactory, "InvalidArgument");
+    InitializeCases.forEach((args) => {
+      it(`should revert deployment with zero ${args.name}`, async () => {
+        const daoFactory = await ethers.getContractFactory("DiamondDao");
+        const startTime = await time.latest();
+
+        await expect(
+          upgrades.deployProxy(daoFactory, [
+            args.contractOwner,
+            args.validatorSet,
+            args.stakingHbbft,
+            args.reinsertPot,
+            args.txPermission,
+            args.lowMajorityDao,
+            args.proposalFee,
+            startTime + 1
+          ], {
+            initializer: "initialize",
+          })
+        ).to.be.revertedWithCustomError(daoFactory, "InvalidArgument");
+      });
     });
 
-    it("should not deploy contract with invalid StakingHbbft address", async function () {
+    it("should revert deployment with invalid start timestamp", async function () {
       const daoFactory = await ethers.getContractFactory("DiamondDao");
       const startTime = await time.latest();
 
       await expect(
         upgrades.deployProxy(daoFactory, [
-          users[1].address,
-          ethers.ZeroAddress,
-          users[2].address,
-          ethers.ZeroAddress,
-          createProposalFee,
-          startTime + 1
-        ], {
-          initializer: "initialize",
-        })
-      ).to.be.revertedWithCustomError(daoFactory, "InvalidArgument");
-    });
-
-    it("should not deploy contract with invalid reinsert pot address", async function () {
-      const daoFactory = await ethers.getContractFactory("DiamondDao");
-      const startTime = await time.latest();
-
-      await expect(
-        upgrades.deployProxy(daoFactory, [
-          users[1].address,
-          users[2].address,
-          ethers.ZeroAddress,
-          ethers.ZeroAddress,
-          createProposalFee,
-          startTime + 1
-        ], {
-          initializer: "initialize",
-        })
-      ).to.be.revertedWithCustomError(daoFactory, "InvalidArgument");
-    });
-
-    it("should not deploy contract with zero create proposal fee address", async function () {
-      const daoFactory = await ethers.getContractFactory("DiamondDao");
-      const startTime = await time.latest();
-
-      await expect(
-        upgrades.deployProxy(daoFactory, [
-          users[1].address,
-          users[2].address,
-          users[3].address,
-          ethers.ZeroAddress,
-          0n,
-          startTime + 1
-        ], {
-          initializer: "initialize",
-        })
-      ).to.be.revertedWithCustomError(daoFactory, "InvalidArgument");
-    });
-
-    it("should not deploy contract with invalid start timestamp", async function () {
-      const daoFactory = await ethers.getContractFactory("DiamondDao");
-      const startTime = await time.latest();
-
-      await expect(
-        upgrades.deployProxy(daoFactory, [
-          users[1].address,
-          users[2].address,
-          users[3].address,
-          ethers.ZeroAddress,
-          createProposalFee,
+          randomWallet(),
+          randomWallet(),
+          randomWallet(),
+          randomWallet(),
+          randomWallet(),
+          randomWallet(),
+          CreateProposalFee,
           startTime - 10
         ], {
           initializer: "initialize",
@@ -238,11 +246,13 @@ describe("DiamondDao contract", function () {
       const startTime = await time.latest();
 
       const dao = await upgrades.deployProxy(daoFactory, [
-        users[1].address,
-        users[2].address,
-        users[3].address,
-        ethers.ZeroAddress,
-        createProposalFee,
+        randomWallet(),
+        randomWallet(),
+        randomWallet(),
+        randomWallet(),
+        randomWallet(),
+        randomWallet(),
+        CreateProposalFee,
         startTime + 1
       ], {
         initializer: "initialize",
@@ -252,11 +262,13 @@ describe("DiamondDao contract", function () {
 
       await expect(
         dao.initialize(
-          users[1].address,
-          users[2].address,
-          users[3].address,
-          ethers.ZeroAddress,
-          createProposalFee,
+          randomWallet(),
+          randomWallet(),
+          randomWallet(),
+          randomWallet(),
+          randomWallet(),
+          randomWallet(),
+          CreateProposalFee,
           startTime + 1
         )
       ).to.be.revertedWithCustomError(dao, "InvalidInitialization");
@@ -313,9 +325,9 @@ describe("DiamondDao contract", function () {
 
       const proposals = [];
 
-      proposals.push(await createProposal(dao, users[2], users[2].address));
-      proposals.push(await createProposal(dao, users[3], users[3].address));
-      proposals.push(await createProposal(dao, users[4], users[4].address));
+      proposals.push(await createProposal(dao, users[2], { description: users[2].address }));
+      proposals.push(await createProposal(dao, users[3], { description: users[3].address }));
+      proposals.push(await createProposal(dao, users[4], { description: users[4].address }));
 
       const currentProposals: bigint[] = await dao.getCurrentPhaseProposals();
 
@@ -337,9 +349,9 @@ describe("DiamondDao contract", function () {
 
       const proposals = [];
 
-      proposals.push(await createProposal(dao, users[2], users[2].address));
-      proposals.push(await createProposal(dao, users[3], users[3].address));
-      proposals.push(await createProposal(dao, users[4], users[4].address));
+      proposals.push(await createProposal(dao, users[2], { description: users[2].address }));
+      proposals.push(await createProposal(dao, users[3], { description: users[3].address }));
+      proposals.push(await createProposal(dao, users[4], { description: users[4].address }));
 
       for (const proposal of proposals) {
         expect((await dao.getProposal(proposal.proposalId)).state).to.equal(ProposalState.Created);
@@ -367,9 +379,18 @@ describe("DiamondDao contract", function () {
       const targets: string[] = [];
       const values: bigint[] = [];
       const calldatas: string[] = [];
+      const majority = OpenProposalMajority.Low;
 
       await expect(
-        dao.propose(targets, values, calldatas, "title", "test", "url", { value: createProposalFee })
+        dao.propose(targets,
+          values,
+          calldatas,
+          "title",
+          "test",
+          "url",
+          majority,
+          { value: CreateProposalFee },
+        )
       ).to.be.revertedWithCustomError(dao, "InvalidArgument")
     });
 
@@ -379,9 +400,19 @@ describe("DiamondDao contract", function () {
       const targets = [users[1].address, users[2].address];
       const values = [1n];
       const calldatas = [EmptyBytes, EmptyBytes];
+      const majority = OpenProposalMajority.Low;
 
       await expect(
-        dao.propose(targets, values, calldatas, "title", "test", "url", { value: createProposalFee })
+        dao.propose(
+          targets,
+          values,
+          calldatas,
+          "title",
+          "test",
+          "url",
+          majority,
+          { value: CreateProposalFee },
+        )
       ).to.be.revertedWithCustomError(dao, "InvalidArgument")
     });
 
@@ -391,9 +422,10 @@ describe("DiamondDao contract", function () {
       const targets = [users[1].address];
       const values = [1n, 1n];
       const calldatas = [EmptyBytes, EmptyBytes];
+      const majority = OpenProposalMajority.Low;
 
       await expect(
-        dao.propose(targets, values, calldatas, "title", "test", "url", { value: createProposalFee })
+        dao.propose(targets, values, calldatas, "title", "test", "url", majority, { value: CreateProposalFee })
       ).to.be.revertedWithCustomError(dao, "InvalidArgument")
     });
 
@@ -403,9 +435,10 @@ describe("DiamondDao contract", function () {
       const targets = [users[3].address];
       const values = [1n];
       const calldatas = [EmptyBytes];
+      const majority = OpenProposalMajority.Low;
 
       await expect(
-        dao.propose(targets, values, calldatas, "title", "test", "url", { value: 0n })
+        dao.propose(targets, values, calldatas, "title", "test", "url", majority, { value: 0n })
       ).to.be.revertedWithCustomError(dao, "InsufficientFunds")
     });
 
@@ -416,6 +449,7 @@ describe("DiamondDao contract", function () {
       const values = [ethers.parseEther("1")];
       const calldatas = [EmptyBytes];
       const description = "test";
+      const majority = OpenProposalMajority.Low;
 
       const proposalId = await dao.hashProposal(
         targets,
@@ -424,10 +458,10 @@ describe("DiamondDao contract", function () {
         description
       );
 
-      expect(await dao.propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee }));
+      expect(await dao.propose(targets, values, calldatas, "title", description, "url", majority, { value: CreateProposalFee }));
 
       await expect(
-        dao.propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+        dao.propose(targets, values, calldatas, "title", description, "url", majority, { value: CreateProposalFee })
       ).to.be.revertedWithCustomError(dao, "ProposalAlreadyExist")
         .withArgs(proposalId);
     });
@@ -440,9 +474,10 @@ describe("DiamondDao contract", function () {
       const targets = [users[3].address];
       const values = [1n];
       const calldatas = [EmptyBytes];
+      const majority = OpenProposalMajority.Low;
 
       await expect(
-        dao.propose(targets, values, calldatas, "title", "test", "url", { value: createProposalFee })
+        dao.propose(targets, values, calldatas, "title", "test", "url", majority, { value: CreateProposalFee })
       ).to.be.revertedWithCustomError(dao, "UnavailableInCurrentPhase")
         .withArgs(DaoPhase.Voting);
     });
@@ -452,10 +487,11 @@ describe("DiamondDao contract", function () {
       const { dao } = await loadFixture(deployFixture);
 
       const usersSubset = users.slice(10, 20);
+      const majority = OpenProposalMajority.Low;
 
       for (let i = 0; i < 100; ++i) {
         for (const user of usersSubset) {
-          expect(await createProposal(dao, user, `proposal ${i} ${user.address}`));
+          expect(await createProposal(dao, user, { description: `proposal ${i} ${user.address}` }));
         }
       }
 
@@ -467,7 +503,8 @@ describe("DiamondDao contract", function () {
           "title",
           "should fail",
           "url",
-          { value: createProposalFee }
+          majority,
+          { value: CreateProposalFee }
         )
       ).to.be.revertedWithCustomError(dao, "NewProposalsLimitExceeded");
     });
@@ -481,6 +518,7 @@ describe("DiamondDao contract", function () {
       const values = [ethers.parseEther("1")];
       const calldatas = [EmptyBytes];
       const description = "test";
+      const majority = OpenProposalMajority.Low;
 
       await createProposal(dao, proposer);
 
@@ -488,7 +526,16 @@ describe("DiamondDao contract", function () {
       await swithPhase(dao);
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+        dao.connect(proposer).propose(
+          targets,
+          values,
+          calldatas,
+          "title",
+          description,
+          "url",
+          majority,
+          { value: CreateProposalFee }
+        )
       ).to.be.revertedWithCustomError(dao, "UnfinalizedProposalsExist");
     });
 
@@ -501,6 +548,7 @@ describe("DiamondDao contract", function () {
       const values = [ethers.parseEther("1")];
       const calldatas = [EmptyBytes];
       const description = "test";
+      const majority = OpenProposalMajority.Low;
 
       const proposalId = await dao.hashProposal(
         targets,
@@ -510,7 +558,16 @@ describe("DiamondDao contract", function () {
       );
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+        dao.connect(proposer).propose(
+          targets,
+          values,
+          calldatas,
+          "title",
+          description,
+          "url",
+          majority,
+          { value: CreateProposalFee },
+        )
       ).to.emit(dao, "ProposalCreated")
         .withArgs(
           proposer.address,
@@ -521,7 +578,7 @@ describe("DiamondDao contract", function () {
           "title",
           description,
           "url",
-          createProposalFee
+          CreateProposalFee
         );
     });
 
@@ -534,6 +591,7 @@ describe("DiamondDao contract", function () {
       const values = [ethers.parseEther("1")];
       const calldatas = [EmptyBytes];
       const description = "test";
+      const majority = OpenProposalMajority.Low;
 
       const proposalId = await dao.hashProposal(
         targets,
@@ -549,7 +607,8 @@ describe("DiamondDao contract", function () {
         "title",
         description,
         "url",
-        { value: createProposalFee }
+        majority,
+        { value: CreateProposalFee }
       ));
 
       expect(await dao.proposalExists(proposalId)).to.be.true;
@@ -567,7 +626,7 @@ describe("DiamondDao contract", function () {
         description,
         "url",
         1, // first phase
-        createProposalFee,
+        CreateProposalFee,
         0 // open proposal
       ]);
     });
@@ -684,7 +743,7 @@ describe("DiamondDao contract", function () {
       const { dao } = await loadFixture(deployFixture);
       const proposer = users[10];
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await expect(
         dao.vote(proposalId, Vote.Yes)
@@ -697,7 +756,7 @@ describe("DiamondDao contract", function () {
       const proposer = users[10];
       const voter = users[9];
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await swithPhase(dao);
 
@@ -713,7 +772,7 @@ describe("DiamondDao contract", function () {
       const proposer = users[10];
       const voter = users[9];
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await swithPhase(dao);
 
@@ -730,7 +789,7 @@ describe("DiamondDao contract", function () {
       const voter = users[9];
       const vote = Vote.Yes;
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await mockValidatorSet.add(voter.address, voter.address, true);
       await swithPhase(dao);
@@ -749,7 +808,7 @@ describe("DiamondDao contract", function () {
 
       const vote = Vote.Yes;
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
       await swithPhase(dao);
 
       for (const voter of voters) {
@@ -776,7 +835,7 @@ describe("DiamondDao contract", function () {
       const voter = users[11];
       const vote = Vote.Yes;
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
       await swithPhase(dao);
 
       await mockValidatorSet.add(voter.address, voter.address, true);
@@ -805,7 +864,7 @@ describe("DiamondDao contract", function () {
       const { dao } = await loadFixture(deployFixture);
       const proposer = users[10];
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await expect(
         dao.voteWithReason(proposalId, Vote.Yes, "reason")
@@ -818,7 +877,7 @@ describe("DiamondDao contract", function () {
       const proposer = users[10];
       const voter = users[9];
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await swithPhase(dao);
 
@@ -836,7 +895,7 @@ describe("DiamondDao contract", function () {
       const vote = Vote.Yes;
       const reason = "vote reason"
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await mockValidatorSet.add(voter.address, voter.address, true);
       await swithPhase(dao);
@@ -855,7 +914,7 @@ describe("DiamondDao contract", function () {
       const voters = users.slice(5, 10);
       const vote = Vote.Yes;
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
       await swithPhase(dao);
 
       for (const voter of voters) {
@@ -883,7 +942,7 @@ describe("DiamondDao contract", function () {
       const vote = Vote.Yes;
       const reason = "vote reason"
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
       await swithPhase(dao);
 
       await mockValidatorSet.add(voter.address, voter.address, true);
@@ -893,6 +952,93 @@ describe("DiamondDao contract", function () {
       const savedVoteData = await dao.votes(proposalId, voter.address);
 
       expect(Object.values(savedVoteData)).to.deep.equal([voteTimestamp, vote, reason]);
+    });
+  });
+
+  describe("changeVote", async function () {
+    it("should revert in case of double voting", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await dao.connect(voter).vote(proposalId, Vote.Yes);
+
+      await expect(
+        dao.connect(voter).vote(proposalId, Vote.No)
+      ).to.be.revertedWithCustomError(dao, "AlreadyVoted")
+        .withArgs(proposalId, voter.address);
+    });
+
+    it("should revert change vote if voter has not voted yet", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await expect(
+        dao.connect(voter).changeVote(proposalId, Vote.Yes, "reason")
+      ).to.be.revertedWithCustomError(dao, "NoVoteFound")
+        .withArgs(proposalId, voter.address);
+    });
+
+    it("should revert if same vote is submitted", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await dao.connect(voter).voteWithReason(proposalId, Vote.Yes, "reason");
+
+      await expect(
+        dao.connect(voter).changeVote(proposalId, Vote.Yes, "reason")
+      ).to.be.revertedWithCustomError(dao, "SameVote")
+        .withArgs(proposalId, voter.address, Vote.Yes);
+    });
+
+    it("should allow user to change vote", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await dao.connect(voter).vote(proposalId, Vote.Yes);
+      await expect(dao.connect(voter).changeVote(proposalId, Vote.No, "reason")).to.not.be.reverted;
+    });
+
+    it("should allow user to change vote reason", async function () {
+      const { dao, mockValidatorSet } = await loadFixture(deployFixture);
+
+      const proposer = users[10];
+      const voter = users[9];
+
+      const { proposalId } = await createProposal(dao, proposer);
+
+      await mockValidatorSet.add(voter.address, voter.address, true);
+      await swithPhase(dao);
+
+      await dao.connect(voter).voteWithReason(proposalId, Vote.Yes, "reason");
+      await expect(dao.connect(voter).changeVote(proposalId, Vote.No, "new reason")).to.not.be.reverted;
     });
   });
 
@@ -912,7 +1058,7 @@ describe("DiamondDao contract", function () {
       const { dao } = await loadFixture(deployFixture);
       const proposer = users[10];
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await expect(
         dao.countVotes(proposalId)
@@ -924,7 +1070,7 @@ describe("DiamondDao contract", function () {
       const { dao } = await loadFixture(deployFixture);
 
       const proposer = users[10];
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       expect(await dao.connect(proposer).cancel(proposalId, "test"));
 
@@ -943,7 +1089,7 @@ describe("DiamondDao contract", function () {
 
       await addValidatorsStake(mockValidatorSet, mockStaking, voters, stakeAmount);
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await swithPhase(dao);
       await vote(dao, proposalId, voters, Vote.Yes);
@@ -955,7 +1101,7 @@ describe("DiamondDao contract", function () {
         0n
       ]);
 
-      await vote(dao, proposalId, voters, Vote.No);
+      await changeVote(dao, proposalId, voters, Vote.No);
 
       expect(Object.values(await dao.countVotes(proposalId))).to.deep.equal([
         0n,
@@ -980,7 +1126,7 @@ describe("DiamondDao contract", function () {
         stakeAmount
       );
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await swithPhase(dao);
       await vote(dao, proposalId, votersYes, Vote.Yes);
@@ -1010,7 +1156,7 @@ describe("DiamondDao contract", function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
       const voters = users.slice(5, 15);
 
-      const { proposalId } = await createProposal(dao, users[4], "a");
+      const { proposalId } = await createProposal(dao, users[4]);
 
       await addValidatorsStake(mockValidatorSet, mockStaking, voters);
       await swithPhase(dao);
@@ -1027,7 +1173,7 @@ describe("DiamondDao contract", function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
       const voters = users.slice(5, 15);
 
-      const { proposalId } = await createProposal(dao, users[4], "a");
+      const { proposalId } = await createProposal(dao, users[4]);
 
       await addValidatorsStake(mockValidatorSet, mockStaking, voters);
       await swithPhase(dao);
@@ -1044,7 +1190,7 @@ describe("DiamondDao contract", function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
       const voters = users.slice(5, 15);
 
-      const { proposalId } = await createProposal(dao, users[4], "a");
+      const { proposalId } = await createProposal(dao, users[4], { majority: OpenProposalMajority.High });
 
       await addValidatorsStake(mockValidatorSet, mockStaking, voters);
       await swithPhase(dao);
@@ -1142,7 +1288,7 @@ describe("DiamondDao contract", function () {
       const proposer = users[2];
       const voters = users.slice(10, 20);
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await addValidatorsStake(mockValidatorSet, mockStaking, voters);
 
@@ -1157,7 +1303,7 @@ describe("DiamondDao contract", function () {
         await dao.finalize(proposalId)
       ).to.changeEtherBalances(
         [await dao.getAddress(), proposer.address],
-        [-createProposalFee, createProposalFee]
+        [-CreateProposalFee, CreateProposalFee]
       );
     });
 
@@ -1192,7 +1338,7 @@ describe("DiamondDao contract", function () {
       const proposer = users[2];
       const voters = users.slice(10, 20);
 
-      const { proposalId } = await createProposal(dao, proposer, "a");
+      const { proposalId } = await createProposal(dao, proposer);
 
       await addValidatorsStake(mockValidatorSet, mockStaking, voters);
 
@@ -1207,7 +1353,7 @@ describe("DiamondDao contract", function () {
         await dao.finalize(proposalId)
       ).to.changeEtherBalances(
         [await dao.getAddress(), reinsertPot.address],
-        [-createProposalFee, createProposalFee]
+        [-CreateProposalFee, CreateProposalFee]
       );
     });
 
@@ -1285,10 +1431,13 @@ describe("DiamondDao contract", function () {
       const { proposalId } = await createProposal(
         dao,
         users[1],
-        "fund user 5",
-        [userToFund.address],
-        [fundAmount],
-        [EmptyBytes]
+        {
+          description: "fund user 5",
+          targets: [userToFund.address],
+          values: [fundAmount],
+          calldatas: [EmptyBytes],
+          majority: OpenProposalMajority.High
+        }
       );
 
       await proposer.sendTransaction({
@@ -1346,10 +1495,13 @@ describe("DiamondDao contract", function () {
       const { proposalId } = await createProposal(
         dao,
         users[1],
-        "fund user 5",
-        [userToFund.address],
-        [fundAmount],
-        [EmptyBytes]
+        {
+          description: "fund user 5",
+          targets: [userToFund.address],
+          values: [fundAmount],
+          calldatas: [EmptyBytes],
+          majority: OpenProposalMajority.High
+        }
       );
 
       await proposer.sendTransaction({
