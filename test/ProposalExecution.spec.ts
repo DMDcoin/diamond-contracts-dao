@@ -5,8 +5,8 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, setBalance, time } from "@nomicfoundation/hardhat-network-helpers";
 import { attachProxyAdminV5 } from "@openzeppelin/hardhat-upgrades/dist/utils";
 
-import { DiamondDao, MockDiamomdDaoLowMajority, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
-import { createProposal, OpenProposalMajority, Vote } from "./fixture/proposal";
+import { DiamondDao, MockDiamondDaoLowMajority, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
+import { createProposal, OpenProposalMajority, ProposalState, ProposalType, Vote } from "./fixture/proposal";
 import { EmptyBytes, getRandomBigInt } from "./fixture/utils";
 
 describe("DAO proposal execution", function () {
@@ -44,7 +44,7 @@ describe("DAO proposal execution", function () {
       daoLowMajorityFactory,
       [owner.address],
       { initializer: 'initialize' }
-    ) as unknown as MockDiamomdDaoLowMajority;
+    ) as unknown as MockDiamondDaoLowMajority;
 
     await daoLowMajority.waitForDeployment();
 
@@ -370,6 +370,194 @@ describe("DAO proposal execution", function () {
       await attacker.setId(proposalId);
 
       await expect(attacker.attack()).to.be.revertedWithCustomError(dao, "ReentrancyGuardReentrantCall");
+    });
+  });
+
+  describe("open proposal with low majority", async function () {
+    it("should transfer funds from low majority dao pot", async function () {
+      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const fundsRequest = governancePotValue;
+      const fundsReceiver = users[12];
+
+      const proposer = users[2];
+      const votersYes = users.slice(10, 20); // 10
+      const votersNo = users.slice(20, 25);  // 5
+
+      const { proposalId } = await createProposal(
+        dao,
+        proposer,
+        {
+          description: getRandomBigInt().toString(),
+          targets: [fundsReceiver.address],
+          values: [fundsRequest],
+          calldatas: [EmptyBytes],
+          majority: OpenProposalMajority.Low,
+          createProposalFee: createProposalFee,
+        }
+      );
+
+      await swithPhase(dao);
+      await addValidatorsStake(mockValidatorSet, mockStaking, [...votersYes, ...votersNo]);
+      await vote(dao, proposalId, votersYes, Vote.Yes);
+      await vote(dao, proposalId, votersNo, Vote.No);
+
+      await swithPhase(dao);
+
+      await dao.finalize(proposalId);
+
+      expect((await dao.getProposal(proposalId)).proposalType).to.equal(ProposalType.OpenLowMajority);
+
+      const mainDaoBalanceBefore = await ethers.provider.getBalance(await dao.getAddress());
+
+      await expect(dao.execute(proposalId))
+        .to.changeEtherBalances(
+          [await daoLowMajority.getAddress(), fundsReceiver.address],
+          [-fundsRequest, fundsRequest]
+        );
+
+      expect(await ethers.provider.getBalance(await dao.getAddress())).to.eq(mainDaoBalanceBefore);
+    });
+    
+    it("should decline proposal if low majority quorum not reached", async function () {
+      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const fundsRequest = governancePotValue;
+      const fundsReceiver = users[12];
+
+      const proposer = users[2];
+      const votersYes = users.slice(10, 19); // 9
+      const votersNo = users.slice(19, 25);  // 6
+
+      const { proposalId } = await createProposal(
+        dao,
+        proposer,
+        {
+          description: getRandomBigInt().toString(),
+          targets: [fundsReceiver.address],
+          values: [fundsRequest],
+          calldatas: [EmptyBytes],
+          majority: OpenProposalMajority.Low,
+          createProposalFee: createProposalFee,
+        }
+      );
+
+      await swithPhase(dao);
+      await addValidatorsStake(mockValidatorSet, mockStaking, [...votersYes, ...votersNo]);
+      await vote(dao, proposalId, votersYes, Vote.Yes);
+      await vote(dao, proposalId, votersNo, Vote.No);
+
+      await swithPhase(dao);
+
+      await dao.finalize(proposalId);
+
+      const proposalData = await dao.getProposal(proposalId);
+
+      expect(proposalData.proposalType).to.equal(ProposalType.OpenLowMajority);
+      expect(proposalData.state).to.equal(ProposalState.Declined);
+
+      const mainDaoBalanceBefore = await ethers.provider.getBalance(await dao.getAddress());
+      const lowMajorityDaoBalanceBefore = await ethers.provider.getBalance(await daoLowMajority.getAddress());
+
+      await expect(dao.execute(proposalId))
+        .to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
+        .withArgs(proposalId, ProposalState.Declined);
+
+      expect(await ethers.provider.getBalance(await dao.getAddress())).to.eq(mainDaoBalanceBefore);
+      expect(await ethers.provider.getBalance(await daoLowMajority.getAddress())).to.eq(lowMajorityDaoBalanceBefore);
+    });
+  });
+
+  describe("open proposal with high majority", async function () {
+    it("should transfer funds from high majority dao pot", async function () {
+      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const fundsRequest = governancePotValue;
+      const fundsReceiver = users[12];
+
+      const proposer = users[2];
+      const votersYes = users.slice(10, 22); // 12
+      const votersNo = users.slice(22, 25);  // 3
+
+      const { proposalId } = await createProposal(
+        dao,
+        proposer,
+        {
+          description: getRandomBigInt().toString(),
+          targets: [fundsReceiver.address],
+          values: [fundsRequest],
+          calldatas: [EmptyBytes],
+          majority: OpenProposalMajority.High,
+          createProposalFee: createProposalFee,
+        }
+      );
+
+      await swithPhase(dao);
+      await addValidatorsStake(mockValidatorSet, mockStaking, [...votersYes, ...votersNo]);
+      await vote(dao, proposalId, votersYes, Vote.Yes);
+      await vote(dao, proposalId, votersNo, Vote.No);
+
+      await swithPhase(dao);
+      await dao.finalize(proposalId);
+
+      expect((await dao.getProposal(proposalId)).proposalType).to.equal(ProposalType.OpenHighMajority);
+
+      const lowMajorityDaoBalanceBefore = await ethers.provider.getBalance(await daoLowMajority.getAddress());
+
+      await expect(dao.execute(proposalId))
+        .to.changeEtherBalances(
+          [await dao.getAddress(), fundsReceiver.address],
+          [-fundsRequest, fundsRequest]
+        );
+
+      expect(await ethers.provider.getBalance(await daoLowMajority.getAddress())).to.eq(lowMajorityDaoBalanceBefore);
+    });
+    
+    it("should decline proposal if low majority quorum not reached", async function () {
+      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+
+      const fundsRequest = governancePotValue;
+      const fundsReceiver = users[12];
+
+      const proposer = users[2];
+      const votersYes = users.slice(10, 21); // 11
+      const votersNo = users.slice(21, 25);  // 4
+
+      const { proposalId } = await createProposal(
+        dao,
+        proposer,
+        {
+          description: getRandomBigInt().toString(),
+          targets: [fundsReceiver.address],
+          values: [fundsRequest],
+          calldatas: [EmptyBytes],
+          majority: OpenProposalMajority.High,
+          createProposalFee: createProposalFee,
+        }
+      );
+
+      await swithPhase(dao);
+      await addValidatorsStake(mockValidatorSet, mockStaking, [...votersYes, ...votersNo]);
+      await vote(dao, proposalId, votersYes, Vote.Yes);
+      await vote(dao, proposalId, votersNo, Vote.No);
+
+      await swithPhase(dao);
+      await dao.finalize(proposalId);
+
+      const proposalData = await dao.getProposal(proposalId);
+
+      expect(proposalData.proposalType).to.equal(ProposalType.OpenHighMajority);
+      expect(proposalData.state).to.equal(ProposalState.Declined);
+
+      const mainDaoBalanceBefore = await ethers.provider.getBalance(await dao.getAddress());
+      const lowMajorityDaoBalanceBefore = await ethers.provider.getBalance(await daoLowMajority.getAddress());
+
+      await expect(dao.execute(proposalId))
+        .to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
+        .withArgs(proposalId, ProposalState.Declined);
+
+      expect(await ethers.provider.getBalance(await dao.getAddress())).to.eq(mainDaoBalanceBefore);
+      expect(await ethers.provider.getBalance(await daoLowMajority.getAddress())).to.eq(lowMajorityDaoBalanceBefore);
     });
   });
 });

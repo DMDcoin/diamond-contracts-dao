@@ -4,6 +4,14 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { DiamondDao } from "../../typechain-types";
 import { EmptyBytes } from "./utils";
 
+
+export enum ProposalType {
+  OpenLowMajority,
+  ContractUpgrade,
+  EcosystemParameterChange,
+  OpenHighMajority
+};
+
 export enum ProposalState {
   Created,
   Canceled,
@@ -17,12 +25,12 @@ export enum ProposalState {
 export enum Vote {
   No,
   Yes
-}
+};
 
 export enum OpenProposalMajority {
   Low,
   High
-}
+};
 
 export type CreateProposalOpts = {
   title?: string;
