@@ -3,7 +3,7 @@ import { expect } from "chai";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, setBalance, time } from "@nomicfoundation/hardhat-network-helpers";
 
-import { DiamondDao, MockDiamomdDaoLowMajority, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
+import { DiamondDao, MockDiamondDaoLowMajority, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
 import { getRandomBigInt } from "./fixture/utils";
 import { createProposal, OpenProposalMajority, Vote } from "./fixture/proposal";
 
@@ -49,7 +49,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       daoLowMajorityFactory,
       [owner.address],
       { initializer: 'initialize' }
-    ) as unknown as MockDiamomdDaoLowMajority;
+    ) as unknown as MockDiamondDaoLowMajority;
 
     await daoLowMajority.waitForDeployment();
 

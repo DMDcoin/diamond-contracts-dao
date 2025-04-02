@@ -3,8 +3,8 @@ import { expect } from "chai";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 
-import { DiamondDao, MockDiamomdDaoLowMajority, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
-import { EmptyBytes, getRandomBigInt } from "./fixture/utils";
+import { DiamondDao, MockDiamondDaoLowMajority, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
+import { EmptyBytes } from "./fixture/utils";
 import { createProposal, OpenProposalMajority, ProposalState, Vote } from "./fixture/proposal";
 
 
@@ -12,10 +12,6 @@ describe("Proposal Acceptance Threshold", function () {
   let users: HardhatEthersSigner[];
   let owner: HardhatEthersSigner;
   let reinsertPot: HardhatEthersSigner;
-
-  let dao: any;
-  let mockValidatorSet: any;
-  let mockStaking: any;
 
   const createProposalFee = ethers.parseEther("10");
   const governancePotValue = ethers.parseEther('500');
@@ -27,8 +23,6 @@ describe("Proposal Acceptance Threshold", function () {
     reinsertPot = signers[1];
 
     users = signers.slice(2);
-
-    ({ dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture));
   });
 
   async function deployFixture() {
@@ -49,7 +43,7 @@ describe("Proposal Acceptance Threshold", function () {
       daoLowMajorityFactory,
       [owner.address],
       { initializer: 'initialize' }
-    ) as unknown as MockDiamomdDaoLowMajority;
+    ) as unknown as MockDiamondDaoLowMajority;
 
     await daoLowMajority.waitForDeployment();
 

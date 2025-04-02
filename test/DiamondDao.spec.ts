@@ -5,7 +5,7 @@ import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 
 import {
   DiamondDao,
-  MockDiamomdDaoLowMajority,
+  MockDiamondDaoLowMajority,
   MockStakingHbbft,
   MockValidatorSetHbbft
 } from "../typechain-types"; // prettier-ignore
@@ -56,7 +56,7 @@ describe("DiamondDao contract", function () {
       daoLowMajorityFactory,
       [owner.address],
       { initializer: 'initialize' }
-    ) as unknown as MockDiamomdDaoLowMajority;
+    ) as unknown as MockDiamondDaoLowMajority;
 
     await daoLowMajority.waitForDeployment();
 
