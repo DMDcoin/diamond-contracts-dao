@@ -20,24 +20,26 @@ interface IDiamondDao {
 
     event ProposalExecuted(address indexed caller, uint256 indexed proposalId);
 
-    event VotingFinalized(address indexed caller, uint256 indexed proposalId, bool accepted);
+    event VotingFinalized(address indexed caller, uint256 indexed proposalId, bool indexed accepted);
 
-    event SubmitVote(address indexed voter, uint256 indexed proposalId, Vote vote);
+    event SubmitVote(address indexed voter, uint256 indexed proposalId, Vote indexed vote);
 
     event SubmitVoteWithReason(
         address indexed voter,
         uint256 indexed proposalId,
-        Vote vote,
+        Vote indexed vote,
         string reason
     );
 
-    event SwitchDaoPhase(Phase phase, uint256 start, uint256 end);
+    event ChangeVote(address indexed voter, uint256 indexed proposalId, Vote indexed vote, string reason);
 
-    event SetCreateProposalFee(uint256 fee);
+    event SwitchDaoPhase(Phase indexed phase, uint256 indexed start, uint256 indexed end);
 
-    event SetIsCoreContract(address contractAddress, bool isCore);
+    event SetCreateProposalFee(uint256 indexed fee);
 
-    event SetChangeAbleParameters(bool allowed, string setter, string getter, uint256[] params);
+    event SetIsCoreContract(address indexed contractAddress, bool indexed isCore);
+
+    event SetChangeAbleParameters(bool indexed allowed, string setter, string getter, uint256[] params);
 
     error InsufficientFunds();
     error InvalidArgument();
@@ -52,11 +54,12 @@ interface IDiamondDao {
     error UnavailableInCurrentPhase(Phase phase);
     error UnexpectedProposalState(uint256 proposalId, ProposalState state);
     error ContractCallFailed(bytes funcSelector, address targetContract);
-    error FunctionUpgradeNotAllowed(bytes4 funcSelector, address targetContract);
-    error InvalidUpgradeValue(uint256 currentVal, uint256 newVal);
     error UnfinalizedProposalsExist();
     error OutsideExecutionWindow(uint256 proposalId);
     error NotProposer(uint256 proposalId, address caller);
+    error SameVote(uint256 proposalId, address vote, Vote _vote);
+    error AlreadyVoted(uint256 proposalId, address voter);
+    error NoVoteFound(uint256 proposalId, address voter);
 
     function propose(
         address[] memory targets,

@@ -12,7 +12,6 @@ enum ProposalState {
 }
 
 enum Vote {
-    Abstain,
     No,
     Yes
 }
