@@ -5,6 +5,7 @@ import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@openzeppelin/hardhat-upgrades";
 import "hardhat-contract-sizer";
+import "hardhat-tracer";
 
 
 let mnemonic = 'inspire school random normal account steel strike shove close album produce cube bounce memory before';
@@ -45,6 +46,19 @@ const config: HardhatUserConfig = {
       hardfork: "istanbul",
       minGasPrice: 1000000000
     },
+    beta1: {
+      //url: "http://62.171.133.46:55100",
+      url: "https://beta-rpc.bit.diamonds",
+      accounts: {
+          mnemonic: mnemonic,
+          path: "m/44'/60'/0'/0",
+          initialIndex: 0,
+          count: 20,
+          passphrase: "",
+      },
+      gasPrice: 1000000000,
+      hardfork: "london",
+  },
   },
   solidity: {
     compilers: [
