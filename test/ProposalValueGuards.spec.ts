@@ -1,26 +1,16 @@
 import { ethers, upgrades } from "hardhat";
 import { expect } from "chai";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
+import { loadFixture, setBalance, time } from "@nomicfoundation/hardhat-network-helpers";
 
-import { DiamondDao, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
-
-const EmptyBytes = ethers.hexlify(new Uint8Array());
-
-enum Vote {
-  No,
-  Yes
-}
-
-export function getRandomBigInt(): bigint {
-  let hex = "0x" + Buffer.from(ethers.randomBytes(16)).toString("hex");
-
-  return BigInt(hex);
-}
+import { DiamondDao, MockDiamondDaoLowMajority, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
+import { getRandomBigInt } from "./fixture/utils";
+import { createProposal, OpenProposalMajority, Vote } from "./fixture/proposal";
 
 
 describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
   let users: HardhatEthersSigner[];
+  let owner: HardhatEthersSigner;
   let reinsertPot: HardhatEthersSigner;
 
   let dao: DiamondDao;
@@ -31,9 +21,12 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
   const governancePotValue = ethers.parseEther('500');
 
   before(async () => {
-    users = await ethers.getSigners();
+    const signers = await ethers.getSigners();
 
-    reinsertPot = users[1];
+    owner = signers[0]
+    reinsertPot = signers[1];
+
+    users = signers.slice(2);
 
     ({ dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture));
   });
@@ -49,63 +42,49 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
     const mockStaking = await stakingFactory.deploy(await mockValidatorSet.getAddress());
     await mockStaking.waitForDeployment();
 
+    const mockTxPermission = ethers.Wallet.createRandom().address;
+
+    const daoLowMajorityFactory = await ethers.getContractFactory("MockDiamondDaoLowMajority");
+    const daoLowMajority = await upgrades.deployProxy(
+      daoLowMajorityFactory,
+      [owner.address],
+      { initializer: 'initialize' }
+    ) as unknown as MockDiamondDaoLowMajority;
+
+    await daoLowMajority.waitForDeployment();
+
     const startTime = await time.latest();
 
-    const daoProxy = await upgrades.deployProxy(daoFactory, [
-      users[0].address,
+    const dao = (await upgrades.deployProxy(daoFactory, [
+      owner.address,
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
-      ethers.ZeroAddress,
+      mockTxPermission,
+      await daoLowMajority.getAddress(),
       createProposalFee,
       startTime + 10
     ], {
       initializer: "initialize",
-    });
+    })) as unknown as DiamondDao;
 
-    await daoProxy.waitForDeployment();
+    await dao.waitForDeployment();
 
-    const dao = daoFactory.attach(await daoProxy.getAddress()) as DiamondDao;
+    await daoLowMajority.setMainDaoAddress(await dao.getAddress());
 
-    await users[0].sendTransaction({
+    await setBalance(owner.address, governancePotValue * 10n);
+
+    await owner.sendTransaction({
       value: governancePotValue,
       to: await dao.getAddress()
     });
 
-    return { dao, mockValidatorSet, mockStaking };
-  }
+    await owner.sendTransaction({
+      value: governancePotValue,
+      to: await daoLowMajority.getAddress()
+    });
 
-  async function createProposal(
-    dao: DiamondDao,
-    proposer: HardhatEthersSigner,
-    description?: string,
-    targets?: string[],
-    values?: bigint[],
-    calldatas?: string[]
-  ) {
-    const _targets = targets ? targets : [users[1].address];
-    const _values = values ? values : [ethers.parseEther('50')];
-    const _calldatas = calldatas ? calldatas : [EmptyBytes];
-    const _description = description ? description : "fund user";
-
-    const proposalId = await dao.hashProposal(
-      _targets,
-      _values,
-      _calldatas,
-      _description
-    );
-
-    await dao.connect(proposer).propose(
-      _targets,
-      _values,
-      _calldatas,
-      "title",
-      _description,
-      "url",
-      { value: createProposalFee }
-    );
-
-    return { proposalId, targets, values, calldatas, description }
+    return { dao, daoLowMajority, mockValidatorSet, mockStaking };
   }
 
   async function swithPhase(dao: DiamondDao) {
@@ -155,10 +134,13 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
     const { proposalId } = await createProposal(
       dao,
       proposer,
-      getRandomBigInt().toString(),
-      targets,
-      values,
-      calldatas
+      {
+        description: getRandomBigInt().toString(),
+        targets: targets,
+        values: values,
+        calldatas: calldatas,
+        createProposalFee: createProposalFee,
+      }
     );
 
     await swithPhase(dao);
@@ -207,7 +189,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
         values,
         calldatas
       );
-     
+
       expect((await dao.getProposal(proposalId)).proposalType).to.equal(1);
     });
 
@@ -244,7 +226,16 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       const description = "test";
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+        dao.connect(proposer).propose(
+          targets,
+          values,
+          calldatas,
+          "title",
+          description,
+          "url",
+          OpenProposalMajority.Low,
+          { value: createProposalFee },
+        )
       ).to.be.revertedWithCustomError(dao, "NewValueOutOfRange").withArgs(newVal);
     });
 
@@ -265,7 +256,16 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       );
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+        dao.connect(proposer).propose(
+          targets,
+          values,
+          calldatas,
+          "title",
+          description,
+          "url",
+          OpenProposalMajority.Low,
+          { value: createProposalFee }
+        )
       ).to.emit(dao, "ProposalCreated")
         .withArgs(
           proposer.address,
@@ -297,7 +297,15 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       );
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+        dao.connect(proposer).propose(
+          targets,
+          values,
+          calldatas,
+          "title",
+          description,
+          "url",
+          OpenProposalMajority.Low,
+          { value: createProposalFee })
       ).to.emit(dao, "ProposalCreated")
         .withArgs(
           proposer.address,
@@ -331,7 +339,15 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       );
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+        dao.connect(proposer).propose(
+          targets,
+          values,
+          calldatas,
+          "title",
+          description,
+          "url",
+          OpenProposalMajority.Low,
+          { value: createProposalFee })
       ).to.emit(dao, "ProposalCreated")
         .withArgs(
           proposer.address,
@@ -367,8 +383,8 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
       );
 
       await expect(dao.connect(proposer).execute(proposalId))
-      .to.emit(dao, "ProposalExecuted")
-      .withArgs(proposer.address, proposalId);
+        .to.emit(dao, "ProposalExecuted")
+        .withArgs(proposer.address, proposalId);
 
       expect(await mockStaking.delegatorMinStake()).to.equal('50000000000000000000');
     });

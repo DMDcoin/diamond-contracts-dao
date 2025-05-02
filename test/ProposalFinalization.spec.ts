@@ -3,48 +3,26 @@ import { expect } from "chai";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 
-import { DiamondDao, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
+import { DiamondDao, MockDiamondDaoLowMajority, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
+import { EmptyBytes } from "./fixture/utils";
+import { createProposal, OpenProposalMajority, ProposalState, Vote } from "./fixture/proposal";
 
-const EmptyBytes = ethers.hexlify(new Uint8Array());
-
-enum Vote {
-  No,
-  Yes
-}
-
-enum ProposalState {
-  Created,
-  Canceled,
-  Active,
-  VotingFinished,
-  Accepted,
-  Declined,
-  Executed
-}
-
-export function getRandomBigInt(): bigint {
-  let hex = "0x" + Buffer.from(ethers.randomBytes(16)).toString("hex");
-
-  return BigInt(hex);
-}
 
 describe("Proposal Acceptance Threshold", function () {
   let users: HardhatEthersSigner[];
+  let owner: HardhatEthersSigner;
   let reinsertPot: HardhatEthersSigner;
-
-  let dao: any;
-  let mockValidatorSet: any;
-  let mockStaking: any;
 
   const createProposalFee = ethers.parseEther("10");
   const governancePotValue = ethers.parseEther('500');
 
   before(async () => {
-    users = await ethers.getSigners();
+    const signers = await ethers.getSigners();
 
-    reinsertPot = users[1];
+    owner = signers[0]
+    reinsertPot = signers[1];
 
-    ({ dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture));
+    users = signers.slice(2);
   });
 
   async function deployFixture() {
@@ -58,14 +36,26 @@ describe("Proposal Acceptance Threshold", function () {
     const mockStaking = await stakingFactory.deploy(await mockValidatorSet.getAddress());
     await mockStaking.waitForDeployment();
 
+    const mockTxPermission = ethers.Wallet.createRandom().address;
+
+    const daoLowMajorityFactory = await ethers.getContractFactory("MockDiamondDaoLowMajority");
+    const daoLowMajority = await upgrades.deployProxy(
+      daoLowMajorityFactory,
+      [owner.address],
+      { initializer: 'initialize' }
+    ) as unknown as MockDiamondDaoLowMajority;
+
+    await daoLowMajority.waitForDeployment();
+
     const startTime = await time.latest();
 
     const daoProxy = await upgrades.deployProxy(daoFactory, [
-      users[0].address,
+      owner.address,
       await mockValidatorSet.getAddress(),
       await mockStaking.getAddress(),
       reinsertPot.address,
-      ethers.ZeroAddress,
+      mockTxPermission,
+      await daoLowMajority.getAddress(),
       createProposalFee,
       startTime + 10
     ], {
@@ -76,45 +66,14 @@ describe("Proposal Acceptance Threshold", function () {
 
     const dao = daoFactory.attach(await daoProxy.getAddress()) as DiamondDao;
 
-    await users[0].sendTransaction({
+    await owner.sendTransaction({
       value: governancePotValue,
       to: await dao.getAddress()
     });
 
+    await daoLowMajority.setMainDaoAddress(await dao.getAddress());
+
     return { dao, mockValidatorSet, mockStaking };
-  }
-
-  async function createProposal(
-    dao: DiamondDao,
-    proposer: HardhatEthersSigner,
-    description?: string,
-    targets?: string[],
-    values?: bigint[],
-    calldatas?: string[]
-  ) {
-    const _targets = targets ? targets : [users[1].address];
-    const _values = values ? values : [ethers.parseEther('50')];
-    const _calldatas = calldatas ? calldatas : [EmptyBytes];
-    const _description = description ? description : "fund user";
-
-    const proposalId = await dao.hashProposal(
-      _targets,
-      _values,
-      _calldatas,
-      _description
-    );
-
-    await dao.connect(proposer).propose(
-      _targets,
-      _values,
-      _calldatas,
-      "title",
-      _description,
-      "url",
-      { value: createProposalFee }
-    );
-
-    return { proposalId, targets, values, calldatas, description }
   }
 
   async function swithPhase(dao: DiamondDao) {
@@ -149,38 +108,6 @@ describe("Proposal Acceptance Threshold", function () {
     }
   }
 
-  async function finalizedProposal(
-    dao: DiamondDao,
-    mockValidatorSet: MockValidatorSetHbbft,
-    mockStaking: MockStakingHbbft,
-    _vote: Vote,
-    targets?: string[],
-    values?: bigint[],
-    calldatas?: string[]
-  ) {
-    const proposer = users[2];
-    const voters = users.slice(10, 25);
-
-    const { proposalId } = await createProposal(
-      dao,
-      proposer,
-      getRandomBigInt().toString(),
-      targets,
-      values,
-      calldatas
-    );
-
-    await swithPhase(dao);
-    await addValidatorsStake(mockValidatorSet, mockStaking, voters);
-    await vote(dao, proposalId, voters, _vote);
-
-    await swithPhase(dao);
-
-    await dao.finalize(proposalId);
-
-    return { proposalId, proposer };
-  }
-
   describe("Proposal acceptance threshold", async function () {
     it("should accept proposal (33% required) [TC001]", async function () {
       const voters = users.slice(10, 20);
@@ -201,10 +128,13 @@ describe("Proposal Acceptance Threshold", function () {
       const { proposalId } = await createProposal(
         dao,
         users[1],
-        "fund user 5",
-        [userToFund.address],
-        [fundAmount],
-        [EmptyBytes]
+        {
+          description: "fund user 5",
+          targets: [userToFund.address],
+          values: [fundAmount],
+          calldatas: [EmptyBytes],
+          createProposalFee: createProposalFee,
+        }
       );
 
       await proposer.sendTransaction({
@@ -256,10 +186,13 @@ describe("Proposal Acceptance Threshold", function () {
       const { proposalId } = await createProposal(
         dao,
         users[1],
-        "fund user 5",
-        [userToFund.address],
-        [fundAmount],
-        [EmptyBytes]
+        {
+          description: "fund user 5",
+          targets: [userToFund.address],
+          values: [fundAmount],
+          calldatas: [EmptyBytes],
+          createProposalFee: createProposalFee,
+        }
       );
 
       await proposer.sendTransaction({
@@ -310,10 +243,13 @@ describe("Proposal Acceptance Threshold", function () {
       const { proposalId } = await createProposal(
         dao,
         users[1],
-        "fund user 5",
-        [userToFund.address],
-        [fundAmount],
-        [EmptyBytes]
+        {
+          description: "fund user 5",
+          targets: [userToFund.address],
+          values: [fundAmount],
+          calldatas: [EmptyBytes],
+          createProposalFee: createProposalFee,
+        }
       );
 
       await proposer.sendTransaction({
@@ -365,10 +301,13 @@ describe("Proposal Acceptance Threshold", function () {
       const { proposalId } = await createProposal(
         dao,
         users[1],
-        "fund user 5",
-        [userToFund.address],
-        [fundAmount],
-        [EmptyBytes]
+        {
+          description: "fund user 5",
+          targets: [userToFund.address],
+          values: [fundAmount],
+          calldatas: [EmptyBytes],
+          createProposalFee: createProposalFee,
+        }
       );
 
       await proposer.sendTransaction({
@@ -430,7 +369,16 @@ describe("Proposal Acceptance Threshold", function () {
       );
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+        dao.connect(proposer).propose(
+          targets,
+          values,
+          calldatas,
+          "title",
+          description,
+          "url",
+          OpenProposalMajority.Low,
+          { value: createProposalFee }
+        )
       ).to.emit(dao, "ProposalCreated")
         .withArgs(
           proposer.address,
@@ -462,7 +410,7 @@ describe("Proposal Acceptance Threshold", function () {
       const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
 
       const proposer = users[4];
-      
+
       await addValidatorsStake(
         mockValidatorSet,
         mockStaking,
@@ -499,7 +447,15 @@ describe("Proposal Acceptance Threshold", function () {
       );
 
       await expect(
-        dao.connect(proposer).propose(targets, values, calldatas, "title", description, "url", { value: createProposalFee })
+        dao.connect(proposer).propose(targets,
+          values,
+          calldatas,
+          "title",
+          description,
+          "url",
+          OpenProposalMajority.Low,
+          { value: createProposalFee },
+        )
       ).to.emit(dao, "ProposalCreated")
         .withArgs(
           proposer.address,

@@ -4,9 +4,9 @@
   "description": "DMD DAO contracts",
   "scripts": {
     "compile": "npx hardhat compile --force",
-    "test": "npx hardhat test --show-stack-traces",
+    "test": "npm run clean && npx hardhat test --show-stack-traces",
     "clean": "rm -rf artifacts/ cache/ coverage/ typechain/ typechain-types/ coverage.json",
-    "coverage": "npx hardhat coverage --show-stack-traces --config ./hardhat-coverage.config.ts --solcoverjs ./.solcover.js",
+    "coverage": "npm run clean && npx hardhat coverage --show-stack-traces --solcoverjs ./.solcover.js",
     "update-core": "rm -rf node_modules/diamond-contracts-core && npm install diamond-contracts-core --save --legacy-peer-deps",
     "deployForDaoUpgrade": "npx hardhat run scripts/deployForDaoUpgrade.ts",
     "switchPhase": "npx hardhat run scripts/switchPhase.ts",
@@ -23,16 +23,16 @@
   },
   "homepage": "https://github.com/DMDcoin/diamond-contracts-dao#readme",
   "devDependencies": {
-    "@nomicfoundation/hardhat-ethers": "^3.0.6",
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
-    "@openzeppelin/hardhat-upgrades": "^3.1.0",
+    "@openzeppelin/hardhat-upgrades": "^3.1.1",
     "hardhat-contract-sizer": "^2.10.0",
     "hardhat-tracer": "^3.1.0",
     "ts-node": "^10.9.2",
     "typechain": "^8.1.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.8.2"
   },
   "dependencies": {
     "diamond-contracts-core": "github:DMDcoin/diamond-contracts-core#master"
