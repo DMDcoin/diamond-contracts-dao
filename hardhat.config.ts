@@ -27,10 +27,9 @@ const config: HardhatUserConfig = {
       hardfork: "istanbul",
       gasPrice: 0
     },
-    dmd: {
-      url: "https://rpc.uniq.diamonds/",
-      chainId: 777012,
-      gasPrice: 1000000000, // 1 gwei
+    mainnet: {
+      url: "https://rpc.bit.diamonds/",
+      chainId: 17771,
       accounts: {
         mnemonic: mnemonic
       }
