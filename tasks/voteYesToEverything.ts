@@ -78,6 +78,7 @@ task("vote-yes", "Votes yes to all available proposals")
                 
             }
 
+            console.log("awaiting transactions.");
 
             for (const wait of waitTxs) {
                 await wait.wait();
