@@ -1,7 +1,6 @@
 
 import { task } from 'hardhat/config';
-import { ContractFactory } from 'ethers';
-import { DiamondDao, IStakingHbbft } from '../typechain-types';
+import { DiamondDao } from '../typechain-types';
 
 const KnownContractNames = {
     DiamondDao: "DiamondDao",
@@ -12,7 +11,6 @@ const KnownContracts = new Map<string, string>([
     [KnownContractNames.DiamondDao, "0xDA0da0da0Da0Da0Da0DA00DA0da0da0DA0DA0dA0"],
     [KnownContractNames.DiamondDaoLowMajority, "0x"]
 ]);
-
 
 task("vote-yes", "Votes yes to all available proposals")
     .setAction(async (taskArgs, hre) => {
@@ -26,12 +24,7 @@ task("vote-yes", "Votes yes to all available proposals")
 
         console.log(`Stacking address: ${stakingAddress}`);
 
-        const stakingContract = await hre.ethers.getContractAt("IStakingHbbft", stakingAddress);
-
-        //const stakingContract = stakingContractFactory. .attach(stakingAddress) as IStakingHbbft;
-
-
-        
+        const stakingContract = await hre.ethers.getContractAt("IStakingHbbft", stakingAddress);        
         const allSigners = await hre.ethers.getSigners();
 
         let voters = [];
@@ -46,9 +39,7 @@ task("vote-yes", "Votes yes to all available proposals")
             return;
         }
 
-
         const proposals = await dao.getCurrentPhaseProposals();
-
 
         if (proposals.length === 0) { 
             console.log("No proposals found in the current phase. Exiting.");
@@ -56,7 +47,6 @@ task("vote-yes", "Votes yes to all available proposals")
         }
 
         console.log("voters:", voters.length);
-
 
         for (const proposal of proposals) {
             console.log(`Voting YES on proposal ${proposal}`);
@@ -68,10 +58,7 @@ task("vote-yes", "Votes yes to all available proposals")
 
                 try {
                     const tx = await daoWithSigner.vote(proposal, 1);
-                    // tx.hash;
                     waitTxs.push(tx);
-                    //await tx.wait();
-                    //console.log(`Signer ${signer.address} voted YES on proposal ${proposal} with tx ${tx.hash}`);
                 } catch(e) {
                     console.log("Failed to vote: ", e);
                 }
@@ -83,8 +70,5 @@ task("vote-yes", "Votes yes to all available proposals")
             for (const wait of waitTxs) {
                 await wait.wait();
             }
-            //const tx = await dao.vote(proposal.id, true);
-            //await tx.wait();
-            //console.log(`Voted YES on proposal ${proposal.id}`);
         }
     });
