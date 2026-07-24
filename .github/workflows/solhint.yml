@@ -1,0 +1,57 @@
+name: Solhint Analysis
+
+on: [push, pull_request]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [24.18.0]
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.x.x
+          cache: true
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run solhint
+        id: solhint
+        run: pnpm run solhint:ci
+        continue-on-error: true
+
+      - name: Get solhint report
+        if: steps.solhint.outcome != 'success'
+        run: pnpm run solhint:sarif-report
+
+      - name: Upload solhint result
+        if: steps.solhint.outcome != 'success'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          # Path to SARIF file relative to the root of the repository
+          sarif_file: solhint_report.sarif
+          # Optional category for the results
+          # Used to differentiate multiple results for one commit
+          category: solhint
+
+      - name: Check result
+        if: steps.solhint.outcome != 'success'
+        run: exit 1
