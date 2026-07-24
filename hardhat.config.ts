@@ -7,6 +7,7 @@ import "@openzeppelin/hardhat-upgrades";
 import "hardhat-contract-sizer";
 import "hardhat-tracer";
 import './tasks/getContractUpgradeCalldata';
+import './tasks/voteYesToEverything';
 
 
 let mnemonic = 'inspire school random normal account steel strike shove close album produce cube bounce memory before';
@@ -27,12 +28,12 @@ const config: HardhatUserConfig = {
       hardfork: "istanbul",
       gasPrice: 0
     },
-    dmd: {
-      url: "https://rpc.uniq.diamonds/",
-      chainId: 777012,
-      gasPrice: 1000000000, // 1 gwei
+    mainnet: {
+      url: "https://rpc.bit.diamonds/",
+      chainId: 17771,
       accounts: {
-        mnemonic: mnemonic
+        mnemonic: mnemonic,
+        count: 61
       }
     },
     alpha4: {
@@ -63,7 +64,7 @@ const config: HardhatUserConfig = {
     testnet: {
       url: "http://62.171.133.46:20100",
       accounts: {
-        count: 10,
+        count: 60,
         path: "m/44'/60'/0'/0",
         mnemonic
       },

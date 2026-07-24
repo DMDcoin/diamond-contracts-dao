@@ -9,6 +9,8 @@ async function forwardPhase() {
     
     const [signer] = await ethers.getSigners();
 
+    console.log("Using signer:", signer.address);
+
     const contractFactory = await ethers.getContractFactory("DiamondDao", signer);
   
     let daoContract =contractFactory.attach("0xDA0da0da0Da0Da0Da0DA00DA0da0da0DA0DA0dA0") as DiamondDao;
