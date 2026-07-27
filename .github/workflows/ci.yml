@@ -33,6 +33,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Grype vulnerability scan
+        uses: anchore/scan-action@v7
+        with:
+          path: "."
+          config: .grype.yaml
+        env:
+          SYFT_SOURCE_NAME: diamond-contracts-dao
+          SYFT_SOURCE_VERSION: ${{ github.sha }}
+
       - name: Build
         run: pnpm hardhat build
 

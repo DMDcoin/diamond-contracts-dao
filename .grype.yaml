@@ -1,0 +1,22 @@
+# Grype CVE scanning configuration.
+# See: https://oss.anchore.com/docs/reference/grype/configuration/
+
+# Only report vulnerabilities that have a fix available in the package ecosystem.
+only-fixed: true
+
+ignore:
+  # esbuild (Go binary in node_modules)
+  - vulnerability: GO-2026-5970
+    package:
+      name: golang.org/x/text
+      type: go-module
+
+  # Hardhat EDR
+  - vulnerability: GHSA-g98v-hv3f-hcfr
+    package:
+      name: atty
+      type: rust-crate
+  - vulnerability: GHSA-cq8v-f236-94qc
+    package:
+      name: rand
+      type: rust-crate
