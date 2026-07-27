@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.25;
 
-import { VotingResult } from "../library/DaoStructs.sol";
+import {VotingResult} from "../library/DaoStructs.sol";
 
 interface IDiamondDaoLowMajority {
     function execute(

@@ -26,7 +26,11 @@ interface IDiamondDao {
 
     event ProposalExecuted(address indexed caller, uint256 indexed proposalId);
 
-    event VotingFinalized(address indexed caller, uint256 indexed proposalId, bool indexed accepted);
+    event VotingFinalized(
+        address indexed caller,
+        uint256 indexed proposalId,
+        bool indexed accepted
+    );
 
     event SubmitVote(address indexed voter, uint256 indexed proposalId, Vote indexed vote);
 
@@ -37,7 +41,12 @@ interface IDiamondDao {
         string reason
     );
 
-    event ChangeVote(address indexed voter, uint256 indexed proposalId, Vote indexed vote, string reason);
+    event ChangeVote(
+        address indexed voter,
+        uint256 indexed proposalId,
+        Vote indexed vote,
+        string reason
+    );
 
     event SwitchDaoPhase(Phase indexed phase, uint256 indexed start, uint256 indexed end);
 
@@ -45,7 +54,12 @@ interface IDiamondDao {
 
     event SetIsCoreContract(address indexed contractAddress, bool indexed isCore);
 
-    event SetChangeAbleParameters(bool indexed allowed, string setter, string getter, uint256[] params);
+    event SetChangeAbleParameters(
+        bool indexed allowed,
+        string setter,
+        string getter,
+        uint256[] params
+    );
 
     error InsufficientFunds();
     error InvalidStartTimestamp();

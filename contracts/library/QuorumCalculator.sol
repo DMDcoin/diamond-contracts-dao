@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.25;
 
-import { VotingResult } from "./DaoStructs.sol";
+import {VotingResult} from "./DaoStructs.sol";
 
 /// @dev we have 2 scenarios here:
 /// we either need 1/2 or 1/3 exceeding coins
