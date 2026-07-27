@@ -41,7 +41,7 @@ jobs:
       - name: Run tests with coverage
         run: pnpm hardhat test --coverage
 
-      - name: Grype vulnerability scan
+      - name: "Grype: scan"
         uses: anchore/scan-action@v7
         id: grype-scan
         with:
@@ -54,15 +54,12 @@ jobs:
           SYFT_SOURCE_NAME: diamond-contracts-dao
           SYFT_SOURCE_VERSION: ${{ github.sha }}
 
-      - name: Grype show report
-        if: always() && steps.grype-scan.outputs.sarif != ''
-        run: cat ${{ steps.grype-scan.outputs.sarif }}
-
-      - name: Grype scan report
+      - name: "Grype: publish report"
         if: always() && steps.grype-scan.outputs.sarif != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.grype-scan.outputs.sarif }}
+          category: grype
 
       - name: Coveralls
         uses: coverallsapp/github-action@master

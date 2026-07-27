@@ -33,17 +33,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Run solhint
+      - name: "Solhint: scan"
         id: solhint
         run: pnpm run solhint:ci
         continue-on-error: true
 
-      - name: Generate solhint SARIF report
+      - name: "Solhint: generate report"
         if: always()
         run: pnpm run solhint:sarif-report
         continue-on-error: true
 
-      - name: Upload solhint SARIF
+      - name: "Solhint: publish report"
         if: always() && hashFiles('solhint_report.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
