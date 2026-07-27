@@ -45,6 +45,7 @@ jobs:
         uses: anchore/scan-action@v7
         id: grype-scan
         with:
+          grype-version: latest
           path: "."
           config: .grype.yaml
           fail-build: true
