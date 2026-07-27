@@ -16,5 +16,5 @@
     "target": "es2020"
   },
   "files": ["./hardhat.config.ts"],
-  "include": ["./test", "./src", "./scripts"]
+  "include": ["./test", "./src", "./scripts", "./tasks"]
 }

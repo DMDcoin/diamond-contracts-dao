@@ -5,6 +5,8 @@ import hardhatLedger from "@nomicfoundation/hardhat-ledger";
 import hardhatFoundry from "@nomicfoundation/hardhat-foundry";
 import hardhatContractSizer from "@solidstate/hardhat-contract-sizer";
 
+import { daoTasks } from "./tasks/index.js";
+
 // Set encrypted variables using:
 // pnpm hardhat keystore set DEV_DEPLOYER_PRIVATE_KEY
 // pnpm hardhat keystore set MNEMONIC
@@ -25,6 +27,7 @@ export default defineConfig({
         hardhatFoundry,
         hardhatContractSizer,
     ],
+    tasks: daoTasks,
     solidity: {
         npmFilesToBuild: proxyContractsToBuild,
         version: "0.8.25",
