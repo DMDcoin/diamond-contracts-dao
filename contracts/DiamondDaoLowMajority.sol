@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.25;
 
-import { Address } from "@openzeppelin/contracts/utils/Address.sol";
-import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import { ERC721HolderUpgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
-import { ERC1155HolderUpgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC1155/utils/ERC1155HolderUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {ERC1155HolderUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC1155/utils/ERC1155HolderUpgradeable.sol";
+import {ERC721HolderUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
-import { IDiamondDaoLowMajority } from "./interfaces/IDiamondDaoLowMajority.sol";
+import {IDiamondDaoLowMajority} from "./interfaces/IDiamondDaoLowMajority.sol";
 
-import { VotingResult } from "./library/DaoStructs.sol";
-import { InvalidArgument, OnlyGovernance } from "./library/Errors.sol";
-import { QuorumCalculator } from "./library/QuorumCalculator.sol";
+import {VotingResult} from "./library/DaoStructs.sol";
+import {InvalidArgument, OnlyGovernance} from "./library/Errors.sol";
+import {QuorumCalculator} from "./library/QuorumCalculator.sol";
 
 contract DiamondDaoLowMajority is
     IDiamondDaoLowMajority,
@@ -68,9 +68,8 @@ contract DiamondDaoLowMajority is
         for (uint256 i = 0; i < targets.length; ++i) {
             uint256 value = values[i];
 
-            (bool success, bytes memory returndata) = targets[i].call{ value: values[i] }(
-                calldatas[i]
-            );
+            (bool success, bytes memory returndata) =
+                targets[i].call{value: values[i]}(calldatas[i]);
 
             Address.verifyCallResult(success, returndata);
 

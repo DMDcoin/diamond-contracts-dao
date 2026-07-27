@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.25;
 
-import { IValidatorSetHbbft } from "../interfaces/IValidatorSetHbbft.sol";
+import {IValidatorSetHbbft} from "../interfaces/IValidatorSetHbbft.sol";
 
 contract MockValidatorSetHbbft is IValidatorSetHbbft {
     mapping(address => address) private _stakingToMining;

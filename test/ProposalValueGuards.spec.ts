@@ -1,123 +1,124 @@
-import { ethers, upgrades } from "hardhat";
-import { expect } from "chai";
-import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { loadFixture, setBalance, time } from "@nomicfoundation/hardhat-network-helpers";
+import assert from "node:assert/strict";
+import { describe, it, before } from "node:test";
+import hre from "hardhat";
 
-import { DiamondDao, MockDiamondDaoLowMajority, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
-import { getRandomBigInt } from "./fixture/utils";
-import { createProposal, OpenProposalMajority, Vote } from "./fixture/proposal";
+import { type Address, encodeFunctionData, getAddress, type Hex, parseEther } from "viem";
 
+import { deployProxy } from "./fixtures/proxy.js";
+import { createRandomWallet } from "./fixtures/wallet.js";
+
+import {
+  createProposal,
+  OpenProposalMajority,
+  ProposalType,
+  Vote,
+} from "./fixtures/proposal.js";
+
+import { DiamondDao, MockStakingHbbft, MockValidatorSetHbbft } from "./fixtures/types.js";
+import { getRandomBigInt } from "./fixtures/utils.js";
+
+const connection = await hre.network.getOrCreate();
+const { viem: hhViem, networkHelpers: helpers } = connection;
+
+type TestWalletClient = Awaited<ReturnType<typeof hhViem.getWalletClients>>[number];
 
 describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
-  let users: HardhatEthersSigner[];
-  let owner: HardhatEthersSigner;
-  let reinsertPot: HardhatEthersSigner;
+  let users: TestWalletClient[];
+  let owner: TestWalletClient;
+  let reinsertPot: TestWalletClient;
 
   let dao: DiamondDao;
   let mockValidatorSet: MockValidatorSetHbbft;
   let mockStaking: MockStakingHbbft;
 
-  const createProposalFee = ethers.parseEther("10");
-  const governancePotValue = ethers.parseEther('500');
+  const createProposalFee = parseEther("10");
+  const governancePotValue = parseEther("500");
 
   before(async () => {
-    const signers = await ethers.getSigners();
+    const signers = await hhViem.getWalletClients();
 
-    owner = signers[0]
+    owner = signers[0];
     reinsertPot = signers[1];
-
     users = signers.slice(2);
 
-    ({ dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture));
+    ({ dao, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture));
   });
 
   async function deployFixture() {
-    const daoFactory = await ethers.getContractFactory("DiamondDao");
-    const mockFactory = await ethers.getContractFactory("MockValidatorSetHbbft");
-    const stakingFactory = await ethers.getContractFactory("MockStakingHbbft");
+    const mockValidatorSet = await hhViem.deployContract("MockValidatorSetHbbft");
+    const mockStaking = await hhViem.deployContract("MockStakingHbbft", [mockValidatorSet.address]);
 
-    const mockValidatorSet = await mockFactory.deploy();
-    await mockValidatorSet.waitForDeployment();
+    const mockTxPermission = createRandomWallet().address;
+    const mockBonusScore = createRandomWallet().address;
 
-    const mockStaking = await stakingFactory.deploy(await mockValidatorSet.getAddress());
-    await mockStaking.waitForDeployment();
-
-    const mockTxPermission = ethers.Wallet.createRandom().address;
-    const mockBonusScore = ethers.Wallet.createRandom().address;
-
-    const daoLowMajorityFactory = await ethers.getContractFactory("MockDiamondDaoLowMajority");
-    const daoLowMajority = await upgrades.deployProxy(
-      daoLowMajorityFactory,
-      [owner.address],
-      { initializer: 'initialize' }
-    ) as unknown as MockDiamondDaoLowMajority;
-
-    await daoLowMajority.waitForDeployment();
-
-    const startTime = await time.latest();
-
-    const dao = (await upgrades.deployProxy(daoFactory, [
-      owner.address,
-      await mockValidatorSet.getAddress(),
-      await mockStaking.getAddress(),
-      reinsertPot.address,
-      mockTxPermission,
-      mockBonusScore,
-      await daoLowMajority.getAddress(),
-      createProposalFee,
-      startTime + 10
-    ], {
+    const daoLowMajority = await deployProxy(hhViem, "MockDiamondDaoLowMajority", {
+      initArgs: [owner.account.address],
       initializer: "initialize",
-    })) as unknown as DiamondDao;
+    });
 
-    await dao.waitForDeployment();
+    const startTime = await helpers.time.latest();
 
-    await daoLowMajority.setMainDaoAddress(await dao.getAddress());
+    const dao = await deployProxy(hhViem, "DiamondDao", {
+      initArgs: [
+        owner.account.address,
+        mockValidatorSet.address,
+        mockStaking.address,
+        reinsertPot.account.address,
+        mockTxPermission,
+        mockBonusScore,
+        daoLowMajority.address,
+        createProposalFee,
+        startTime + 10,
+      ],
+      initializer: "initialize",
+    });
 
-    await setBalance(owner.address, governancePotValue * 10n);
+    await daoLowMajority.write.setMainDaoAddress([dao.address]);
+
+    await helpers.setBalance(owner.account.address, governancePotValue * 10n);
 
     await owner.sendTransaction({
       value: governancePotValue,
-      to: await dao.getAddress()
+      to: dao.address,
     });
 
     await owner.sendTransaction({
       value: governancePotValue,
-      to: await daoLowMajority.getAddress()
+      to: daoLowMajority.address,
     });
 
     return { dao, daoLowMajority, mockValidatorSet, mockStaking };
   }
 
   async function swithPhase(dao: DiamondDao) {
-    const phase = await dao.daoPhase();
-    await time.increaseTo(phase.end + 1n);
+    const [, end, ,] = await dao.read.daoPhase();
+    await helpers.time.increaseTo(end + 1n);
 
-    await dao.switchPhase();
+    await dao.write.switchPhase();
   }
 
   async function addValidatorsStake(
     validatorSet: MockValidatorSetHbbft,
     staking: MockStakingHbbft,
-    validators: HardhatEthersSigner[],
+    validators: TestWalletClient[],
     stakeAmount?: bigint
-  ): Promise<void> {
-    const stake = stakeAmount ? stakeAmount : ethers.parseEther('10');
+  ) {
+    const stake = stakeAmount ? stakeAmount : parseEther("10");
 
     for (const validator of validators) {
-      await validatorSet.add(validator.address, validator.address, true);
-      await staking.setStake(validator.address, stake);
+      await validatorSet.write.add([validator.account.address, validator.account.address, true]);
+      await staking.write.setStake([validator.account.address, stake]);
     }
   }
 
   async function vote(
     dao: DiamondDao,
     proposalId: bigint,
-    voters: HardhatEthersSigner[],
+    voters: TestWalletClient[],
     vote: Vote
-  ): Promise<void> {
+  ) {
     for (const voter of voters) {
-      await dao.connect(voter).vote(proposalId, vote);
+      await dao.write.vote([proposalId, vote], { account: voter.account });
     }
   }
 
@@ -126,22 +127,22 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
     mockValidatorSet: MockValidatorSetHbbft,
     mockStaking: MockStakingHbbft,
     _vote: Vote,
-    targets?: string[],
+    targets?: Address[],
     values?: bigint[],
-    calldatas?: string[]
+    calldatas?: Hex[]
   ) {
     const proposer = users[2];
     const voters = users.slice(10, 25);
 
     const { proposalId } = await createProposal(
       dao,
-      proposer,
+      proposer.account,
       {
         description: getRandomBigInt().toString(),
-        targets: targets,
-        values: values,
-        calldatas: calldatas,
-        createProposalFee: createProposalFee,
+        targets,
+        values,
+        calldatas,
+        createProposalFee,
       }
     );
 
@@ -151,7 +152,7 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
 
     await swithPhase(dao);
 
-    await dao.finalize(proposalId);
+    await dao.write.finalize([proposalId]);
 
     return { proposalId, proposer };
   }
@@ -159,26 +160,39 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
   describe("proposal Value Guards", async function () {
     it("should set staking contract as isCoreContract", async function () {
       const proposer = users[2];
-      const calldata = dao.interface.encodeFunctionData("setIsCoreContract", [await mockStaking.getAddress(), true]);
+      const calldata = encodeFunctionData({
+        abi: dao.abi,
+        functionName: "setIsCoreContract",
+        args: [mockStaking.address, true],
+      });
 
       const { proposalId } = await finalizedProposal(
         dao,
         mockValidatorSet,
         mockStaking,
         Vote.Yes,
-        [await dao.getAddress()],
+        [dao.address],
         [0n],
         [calldata]
       );
 
-      await expect(dao.connect(proposer).execute(proposalId)).to.emit(dao, "SetIsCoreContract").withArgs(await mockStaking.getAddress(), true);
+      await hhViem.assertions.emitWithArgs(
+        dao.write.execute([proposalId], { account: proposer.account }),
+        dao,
+        "SetIsCoreContract",
+        [getAddress(mockStaking.address), true],
+      );
     });
 
     it("should fail to propose as ecosystem parameter change", async function () {
-      const newVal = '50000000000000000000';
-      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", [newVal]);
+      const newVal = 50000000000000000000n;
+      const calldata = encodeFunctionData({
+        abi: mockStaking.abi,
+        functionName: "setDelegatorMinStake",
+        args: [newVal],
+      });
 
-      const targets = [await mockStaking.getAddress()];
+      const targets = [mockStaking.address];
       const values = [0n];
       const calldatas = [calldata];
 
@@ -192,85 +206,101 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
         calldatas
       );
 
-      expect((await dao.getProposal(proposalId)).proposalType).to.equal(1);
+      assert.equal(
+        (await dao.read.getProposal([proposalId])).proposalType,
+        ProposalType.ContractUpgrade,
+      );
     });
 
     it("should set setChangeAbleParameters", async function () {
-      const setter = "setDelegatorMinStake(uint256)"
-      const getter = "delegatorMinStake()"
+      const setter = "setDelegatorMinStake(uint256)";
+      const getter = "delegatorMinStake()";
       const params = [
-        "50000000000000000000",
-        "100000000000000000000",
-        "150000000000000000000",
-        "200000000000000000000",
-        "250000000000000000000",
-      ]
+        50000000000000000000n,
+        100000000000000000000n,
+        150000000000000000000n,
+        200000000000000000000n,
+        250000000000000000000n,
+      ];
 
-      await expect(mockStaking.setAllowedChangeableParameter(
-        setter,
-        getter,
-        params
-      )).to.emit(mockStaking, "SetChangeAbleParameter").withArgs(
-        setter,
-        getter,
-        params
+      await hhViem.assertions.emitWithArgs(
+        mockStaking.write.setAllowedChangeableParameter([setter, getter, params]),
+        mockStaking,
+        "SetChangeAbleParameter",
+        [setter, getter, params],
       );
     });
 
     it("should fail to propose ecosystem parameter change as invalid upgrade value", async function () {
       const proposer = users[2];
-      const newVal = '200000000000000000000';
-      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", [newVal]);
+      const newVal = 200000000000000000000n;
+      const calldata = encodeFunctionData({
+        abi: mockStaking.abi,
+        functionName: "setDelegatorMinStake",
+        args: [newVal],
+      });
 
-      const targets = [await mockStaking.getAddress()];
+      const targets = [mockStaking.address];
       const values = [0n];
       const calldatas = [calldata];
       const description = "test";
 
-      await expect(
-        dao.connect(proposer).propose(
-          targets,
-          values,
-          calldatas,
-          "title",
-          description,
-          "url",
-          OpenProposalMajority.Low,
-          { value: createProposalFee },
-        )
-      ).to.be.revertedWithCustomError(dao, "NewValueOutOfRange").withArgs(newVal);
+      await hhViem.assertions.revertWithCustomErrorWithArgs(
+        dao.write.propose(
+          [
+            targets,
+            values,
+            calldatas,
+            "title",
+            description,
+            "url",
+            OpenProposalMajority.Low,
+          ],
+          { value: createProposalFee, account: proposer.account },
+        ),
+        dao,
+        "NewValueOutOfRange",
+        [newVal],
+      );
     });
 
     it("should successfully propose ecosystem parameter change increment", async function () {
       const proposer = users[2];
-      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['150000000000000000000']);
+      const calldata = encodeFunctionData({
+        abi: mockStaking.abi,
+        functionName: "setDelegatorMinStake",
+        args: [150000000000000000000n],
+      });
 
-      const targets = [await mockStaking.getAddress()];
+      const targets = [getAddress(mockStaking.address)];
       const values = [0n];
       const calldatas = [calldata];
       const description = "test";
 
-      const proposalId = await dao.hashProposal(
+      const proposalId = await dao.read.hashProposal([
         targets,
         values,
         calldatas,
-        description
-      );
+        description,
+      ]);
 
-      await expect(
-        dao.connect(proposer).propose(
-          targets,
-          values,
-          calldatas,
-          "title",
-          description,
-          "url",
-          OpenProposalMajority.Low,
-          { value: createProposalFee }
-        )
-      ).to.emit(dao, "ProposalCreated")
-        .withArgs(
-          proposer.address,
+      await hhViem.assertions.emitWithArgs(
+        dao.write.propose(
+          [
+            targets,
+            values,
+            calldatas,
+            "title",
+            description,
+            "url",
+            OpenProposalMajority.Low,
+          ],
+          { value: createProposalFee, account: proposer.account },
+        ),
+        dao,
+        "ProposalCreated",
+        [
+          getAddress(proposer.account.address),
           proposalId,
           targets,
           values,
@@ -278,39 +308,48 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           "title",
           description,
           "url",
-          createProposalFee
-        );
+          createProposalFee,
+        ],
+      );
     });
 
     it("should successfully propose ecosystem parameter change decrement and confirm proposalType", async function () {
       const proposer = users[2];
-      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['50000000000000000000']);
+      const calldata = encodeFunctionData({
+        abi: mockStaking.abi,
+        functionName: "setDelegatorMinStake",
+        args: [50000000000000000000n],
+      });
 
-      const targets = [await mockStaking.getAddress()];
+      const targets = [getAddress(mockStaking.address)];
       const values = [0n];
       const calldatas = [calldata];
       const description = "test";
 
-      const proposalId = await dao.hashProposal(
+      const proposalId = await dao.read.hashProposal([
         targets,
         values,
         calldatas,
-        description
-      );
+        description,
+      ]);
 
-      await expect(
-        dao.connect(proposer).propose(
-          targets,
-          values,
-          calldatas,
-          "title",
-          description,
-          "url",
-          OpenProposalMajority.Low,
-          { value: createProposalFee })
-      ).to.emit(dao, "ProposalCreated")
-        .withArgs(
-          proposer.address,
+      await hhViem.assertions.emitWithArgs(
+        dao.write.propose(
+          [
+            targets,
+            values,
+            calldatas,
+            "title",
+            description,
+            "url",
+            OpenProposalMajority.Low,
+          ],
+          { value: createProposalFee, account: proposer.account },
+        ),
+        dao,
+        "ProposalCreated",
+        [
+          getAddress(proposer.account.address),
           proposalId,
           targets,
           values,
@@ -318,41 +357,53 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           "title",
           description,
           "url",
-          createProposalFee
-        );
+          createProposalFee,
+        ],
+      );
 
-      expect((await dao.getProposal(proposalId)).proposalType).to.equal(2);
+      assert.equal(
+        (await dao.read.getProposal([proposalId])).proposalType,
+        ProposalType.EcosystemParameterChange,
+      );
     });
 
     it("should successfully propose contract upgrade and confirm proposalType", async function () {
       const proposer = users[2];
-      const calldata = mockValidatorSet.interface.encodeFunctionData("validatorAvailableSince", [await mockValidatorSet.getAddress()]);
+      const calldata = encodeFunctionData({
+        abi: mockValidatorSet.abi,
+        functionName: "validatorAvailableSince",
+        args: [mockValidatorSet.address],
+      });
 
-      const targets = [await mockValidatorSet.getAddress()];
+      const targets = [getAddress(mockValidatorSet.address)];
       const values = [0n];
       const calldatas = [calldata];
       const description = "test";
 
-      const proposalId = await dao.hashProposal(
+      const proposalId = await dao.read.hashProposal([
         targets,
         values,
         calldatas,
-        description
-      );
+        description,
+      ]);
 
-      await expect(
-        dao.connect(proposer).propose(
-          targets,
-          values,
-          calldatas,
-          "title",
-          description,
-          "url",
-          OpenProposalMajority.Low,
-          { value: createProposalFee })
-      ).to.emit(dao, "ProposalCreated")
-        .withArgs(
-          proposer.address,
+      await hhViem.assertions.emitWithArgs(
+        dao.write.propose(
+          [
+            targets,
+            values,
+            calldatas,
+            "title",
+            description,
+            "url",
+            OpenProposalMajority.Low,
+          ],
+          { value: createProposalFee, account: proposer.account },
+        ),
+        dao,
+        "ProposalCreated",
+        [
+          getAddress(proposer.account.address),
           proposalId,
           targets,
           values,
@@ -360,17 +411,25 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
           "title",
           description,
           "url",
-          createProposalFee
-        );
+          createProposalFee,
+        ],
+      );
 
-      expect((await dao.getProposal(proposalId)).proposalType).to.equal(1);
+      assert.equal(
+        (await dao.read.getProposal([proposalId])).proposalType,
+        ProposalType.ContractUpgrade,
+      );
     });
 
     it("should propose a ecosystem parameter change and execute it", async function () {
       const proposer = users[2];
-      const calldata = mockStaking.interface.encodeFunctionData("setDelegatorMinStake", ['50000000000000000000']);
+      const calldata = encodeFunctionData({
+        abi: mockStaking.abi,
+        functionName: "setDelegatorMinStake",
+        args: [50000000000000000000n],
+      });
 
-      const targets = [await mockStaking.getAddress()];
+      const targets = [mockStaking.address];
       const values = [0n];
       const calldatas = [calldata];
 
@@ -384,11 +443,14 @@ describe("DAO Ecosystem Paramater Change Value Guards Test", function () {
         calldatas
       );
 
-      await expect(dao.connect(proposer).execute(proposalId))
-        .to.emit(dao, "ProposalExecuted")
-        .withArgs(proposer.address, proposalId);
+      await hhViem.assertions.emitWithArgs(
+        dao.write.execute([proposalId], { account: proposer.account }),
+        dao,
+        "ProposalExecuted",
+        [proposer.account.address, proposalId],
+      );
 
-      expect(await mockStaking.delegatorMinStake()).to.equal('50000000000000000000');
+      assert.equal(await mockStaking.read.delegatorMinStake(), 50000000000000000000n);
     });
   });
 });

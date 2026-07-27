@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.25;
 
-import { VotingResult } from "../library/DaoStructs.sol";
-import { QuorumCalculator } from "../library/QuorumCalculator.sol";
+import {VotingResult} from "../library/DaoStructs.sol";
+import {QuorumCalculator} from "../library/QuorumCalculator.sol";
 
 contract MockQuorumCalculator {
     using QuorumCalculator for VotingResult;

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.25;
 
-import { Address } from "@openzeppelin/contracts/utils/Address.sol";
-import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import "diamond-contracts-core/contracts/lib/ValueGuards.sol";
-import { IDiamondDao } from "./interfaces/IDiamondDao.sol";
-import { IDiamondDaoLowMajority } from "./interfaces/IDiamondDaoLowMajority.sol";
-import { IValidatorSetHbbft } from "./interfaces/IValidatorSetHbbft.sol";
-import { IStakingHbbft } from "./interfaces/IStakingHbbft.sol";
-import { ICoreValueGuard } from "./interfaces/ICoreValueGuard.sol";
+import {ICoreValueGuard} from "./interfaces/ICoreValueGuard.sol";
+import {IDiamondDao} from "./interfaces/IDiamondDao.sol";
+import {IDiamondDaoLowMajority} from "./interfaces/IDiamondDaoLowMajority.sol";
+import {IStakingHbbft} from "./interfaces/IStakingHbbft.sol";
+import {IValidatorSetHbbft} from "./interfaces/IValidatorSetHbbft.sol";
+import {ValueGuards} from "diamond-contracts-core/contracts/lib/ValueGuards.sol";
 
 import {
     DaoPhase,
@@ -26,9 +26,9 @@ import {
     VotingResult
 } from "./library/DaoStructs.sol"; // prettier-ignore
 
-import { InvalidArgument, OnlyGovernance } from "./library/Errors.sol";
+import {InvalidArgument, OnlyGovernance} from "./library/Errors.sol";
 
-import { QuorumCalculator } from "./library/QuorumCalculator.sol";
+import {QuorumCalculator} from "./library/QuorumCalculator.sol";
 
 /// Diamond DAO central point of operation.
 /// - Manages the DAO funds.
@@ -50,7 +50,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     address public reinsertPot;
     uint256 public createProposalFee;
 
-    uint256 public governancePot;   
+    uint256 public governancePot;
 
     IValidatorSetHbbft public validatorSet;
     IStakingHbbft public stakingHbbft;
@@ -154,14 +154,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         uint64 _startTimestamp
     ) external initializer {
         if (
-            _contractOwner == address(0) ||
-            _validatorSet == address(0) ||
-            _reinsertPot == address(0) ||
-            _stakingHbbft == address(0) ||
-            _txPermission == address(0) ||
-            _lowMajorityDao == address(0) ||
-            _bonusScore == address(0) ||
-            _createProposalFee == 0
+            _contractOwner == address(0) || _validatorSet == address(0)
+                || _reinsertPot == address(0) || _stakingHbbft == address(0)
+                || _txPermission == address(0) || _lowMajorityDao == address(0)
+                || _bonusScore == address(0) || _createProposalFee == 0
         ) {
             revert InvalidArgument();
         }
@@ -229,9 +225,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         daoPhase.end = currentTimestamp + DAO_PHASE_DURATION;
         daoPhase.phase = newPhase;
 
-        ProposalState stateToSet = newPhase == Phase.Voting
-            ? ProposalState.Active
-            : ProposalState.VotingFinished;
+        ProposalState stateToSet =
+            newPhase == Phase.Voting ? ProposalState.Active : ProposalState.VotingFinished;
 
         bool snapshotStakes = stateToSet == ProposalState.VotingFinished;
 
@@ -271,9 +266,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         OpenProposalMajority majority // Affects only open proposal type
     ) external payable nonReentrant onlyPhase(Phase.Proposal) noUnfinalizedProposals {
         if (
-            targets.length != values.length ||
-            targets.length != calldatas.length ||
-            targets.length == 0
+            targets.length != values.length || targets.length != calldatas.length
+                || targets.length == 0
         ) {
             revert InvalidArgument();
         }
@@ -393,8 +387,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         VoteRecord storage voteRecord = votes[proposalId][voter];
 
         if (
-            voteRecord.vote == _vote &&
-            keccak256(bytes(voteRecord.reason)) == keccak256(bytes(reason))
+            voteRecord.vote == _vote
+                && keccak256(bytes(voteRecord.reason)) == keccak256(bytes(reason))
         ) {
             revert SameVote(proposalId, voter, _vote);
         }
@@ -445,10 +439,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
         if (proposal.proposalType == ProposalType.OpenLowMajority) {
             lowMajorityDao.execute(
-                proposalId,
-                proposal.targets,
-                proposal.values,
-                proposal.calldatas
+                proposalId, proposal.targets, proposal.values, proposal.calldatas
             );
         } else {
             _executeOperations(proposal.targets, proposal.values, proposal.calldatas);
@@ -477,15 +468,17 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         return proposals[proposalId];
     }
 
-    function countVotes(
-        uint256 proposalId
-    ) external view exists(proposalId) returns (VotingResult memory) {
+    function countVotes(uint256 proposalId)
+        external
+        view
+        exists(proposalId)
+        returns (VotingResult memory)
+    {
         ProposalState state = proposals[proposalId].state;
 
         if (
-            state == ProposalState.Accepted ||
-            state == ProposalState.Declined ||
-            state == ProposalState.Executed
+            state == ProposalState.Accepted || state == ProposalState.Declined
+                || state == ProposalState.Executed
         ) {
             return results[proposalId];
         } else if (state == ProposalState.VotingFinished) {
@@ -533,12 +526,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         return result;
     }
 
-    /**
-     * @dev Checks if the quorum has been reached for a given proposal type and voting result.
-     * @param _type The type of the proposal.
-     * @param result The voting result containing the counts of "yes" and "no" votes.
-     * @return A boolean indicating whether the quorum has been reached.
-     */
+    /// @dev Checks if the quorum has been reached for a given proposal type and voting result.
+    /// @param _type The type of the proposal.
+    /// @param result The voting result containing the counts of "yes" and "no" votes.
+    /// @return A boolean indicating whether the quorum has been reached.
     function quorumReached(
         uint256 proposalId,
         ProposalType _type,
@@ -606,11 +597,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         _daoEpochVoters[daoPhase.daoEpoch].add(voter);
         _proposalVoters[proposalId].add(voter);
 
-        votes[proposalId][voter] = VoteRecord({
-            timestamp: uint64(block.timestamp),
-            vote: _vote,
-            reason: reason
-        });
+        votes[proposalId][voter] =
+            VoteRecord({timestamp: uint64(block.timestamp), vote: _vote, reason: reason});
     }
 
     function _saveVotingResult(uint256 proposalId, VotingResult memory res) private {
@@ -629,9 +617,8 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
     ) private {
         for (uint256 i = 0; i < targets.length; ++i) {
             uint256 execValue = calldatas[i].length == 0 ? values[i] : 0;
-            (bool success, bytes memory returndata) = targets[i].call{ value: execValue }(
-                calldatas[i]
-            );
+            (bool success, bytes memory returndata) =
+                targets[i].call{value: execValue}(calldatas[i]);
 
             Address.verifyCallResult(success, returndata);
 
@@ -643,7 +630,7 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
 
     function _transfer(address recipient, uint256 amount) private {
         // solhint-disable-next-line avoid-low-level-calls
-        (bool success, ) = recipient.call{ value: amount }("");
+        (bool success,) = recipient.call{value: amount}("");
         if (!success) {
             revert TransferFailed(address(this), recipient, amount);
         }
@@ -675,15 +662,15 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         return stakingHbbft.isPoolValid(stakingAddress);
     }
 
-    /**
-     * @dev Extracts the function selector and value from the given call data.
-     * @param _data The call data to extract from.
-     * @return funcSelector The function selector extracted from the call data.
-     * @return value The value extracted from the call data (assuming it's uint256).
-     */
-    function _extractCallData(
-        bytes memory _data
-    ) private pure returns (bytes4 funcSelector, uint256 value) {
+    /// @dev Extracts the function selector and value from the given call data.
+    /// @param _data The call data to extract from.
+    /// @return funcSelector The function selector extracted from the call data.
+    /// @return value The value extracted from the call data (assuming it's uint256).
+    function _extractCallData(bytes memory _data)
+        private
+        pure
+        returns (bytes4 funcSelector, uint256 value)
+    {
         // Extract function selector
         assembly {
             funcSelector := mload(add(_data, 0x20))
@@ -695,12 +682,10 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
         }
     }
 
-    /**
-     * @dev Returns the type of proposal based on the given targets and calldatas.
-     * @param targets The array of target addresses.
-     * @param calldatas The array of calldata bytes.
-     * @return _type The type of proposal (Open, EcosystemParameterChange, or ContractUpgrade).
-     */
+    /// @dev Returns the type of proposal based on the given targets and calldatas.
+    /// @param targets The array of target addresses.
+    /// @param calldatas The array of calldata bytes.
+    /// @return _type The type of proposal (Open, EcosystemParameterChange, or ContractUpgrade).
     function _checkProposalType(
         address[] memory targets,
         bytes[] memory calldatas
@@ -724,17 +709,14 @@ contract DiamondDao is IDiamondDao, Initializable, ReentrancyGuardUpgradeable, V
             );
 
             if (success && result.length > 0) {
-                ICoreValueGuard.ParameterRange memory rangeData = abi.decode(
-                    result,
-                    (ICoreValueGuard.ParameterRange)
-                );
+                ICoreValueGuard.ParameterRange memory rangeData =
+                    abi.decode(result, (ICoreValueGuard.ParameterRange));
 
                 if (isCoreContract[targets[i]] && rangeData.range.length > 0) {
                     _type = ProposalType.EcosystemParameterChange;
 
-                    if (
-                        !ICoreValueGuard(targets[i]).isWithinAllowedRange(setFuncSelector, newVal)
-                    ) {
+                    if (!ICoreValueGuard(targets[i]).isWithinAllowedRange(setFuncSelector, newVal))
+                    {
                         revert NewValueOutOfRange(newVal);
                     }
                 } else {
