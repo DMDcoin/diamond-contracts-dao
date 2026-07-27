@@ -1,9 +1,9 @@
-[![Coverage Status](https://coveralls.io/repos/github/DMDcoin/diamond-contracts-dao/badge.svg?branch=main)](https://coveralls.io/github/DMDcoin/diamond-contracts-dao?branch=main)
-![Unit Tests](https://github.com/dmdcoin/diamond-contracts-dao/actions/workflows/ci.yml/badge.svg)
 
 # diamond-contracts-dao
 
-Solidity contracts for the DMD diamond dao
+![Build][build-status]  [![Coverage][coveralls-badge]][coveralls]
+
+Solidity contracts for the DMD Diamond DAO
 
 ### State transition diagram
 
@@ -12,3 +12,8 @@ Solidity contracts for the DMD diamond dao
 ### Proposal Acceptance Examples
 
 ![TestCases](docs/diagrams/TestCases.png)
+
+
+[coveralls]: https://coveralls.io/github/DMDcoin/diamond-contracts-dao?branch=main
+[coveralls-badge]: https://coveralls.io/repos/github/DMDcoin/diamond-contracts-dao/badge.svg?branch=main
+[build-status]: https://github.com/dmdcoin/diamond-contracts-dao/actions/workflows/ci.yml/badge.svg
