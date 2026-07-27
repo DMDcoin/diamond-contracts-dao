@@ -1,57 +1,45 @@
-import { ethers, upgrades } from "hardhat";
-import { expect } from "chai";
-import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { loadFixture, setBalance } from "@nomicfoundation/hardhat-network-helpers";
+import assert from "node:assert/strict";
+import { describe, it, before } from "node:test";
+import hre from "hardhat";
 
-import { DiamondDaoLowMajority } from "../typechain-types";
-import { EmptyBytes, getRandomBigInt } from "./fixture/utils";
+import { encodeFunctionData, getAddress, parseEther, zeroAddress } from "viem";
+
+import { deployProxy } from "./fixtures/proxy.js";
+import { EmptyBytes, getRandomBigInt } from "./fixtures/utils.js";
+
+const connection = await hre.network.getOrCreate();
+const { viem: hhViem, networkHelpers: helpers } = connection;
+
+type TestWalletClient = Awaited<ReturnType<typeof hhViem.getWalletClients>>[number];
 
 describe("DiamondDaoLowMajority Contract", function () {
-  let users: HardhatEthersSigner[];
-  let mainDao: HardhatEthersSigner;
+  let users: TestWalletClient[];
+  let mainDao: TestWalletClient;
 
   before(async () => {
-    const signers = await ethers.getSigners();
+    const signers = await hhViem.getWalletClients();
     mainDao = signers[0];
-
     users = signers.slice(1);
   });
 
   async function deployFixture() {
-    const mockFactory = await ethers.getContractFactory("MockEtherReceiver");
-    const mockReceiver = await mockFactory.deploy();
-    await mockReceiver.waitForDeployment();
+    const mockReceiver = await hhViem.deployContract("MockEtherReceiver");
+    const mockERC20 = await hhViem.deployContract("MockERC20");
+    const mockERC721 = await hhViem.deployContract("MockERC721");
+    const mockERC1155 = await hhViem.deployContract("MockERC1155");
 
-    const mockERC20Factory = await ethers.getContractFactory("MockERC20");
-    const mockERC20 = await mockERC20Factory.deploy();
-    await mockERC20.waitForDeployment();
+    const lowMajorityDao = await deployProxy(hhViem, "DiamondDaoLowMajority", {
+      initArgs: [mainDao.account.address],
+      initializer: "initialize",
+    });
 
-    const mockERC721Factory = await ethers.getContractFactory("MockERC721");
-    const mockERC721 = await mockERC721Factory.deploy();
-    await mockERC721.waitForDeployment();
+    const reentrancyAttacker = await hhViem.deployContract("ReentrancyAttackerLowMajority");
 
-    const mockERC1155Factory = await ethers.getContractFactory("MockERC1155");
-    const mockERC1155 = await mockERC1155Factory.deploy();
-    await mockERC1155.waitForDeployment();
-
-    const factory = await ethers.getContractFactory("DiamondDaoLowMajority");
-
-    const lowMajorityDao = (await upgrades.deployProxy(factory,
-      [mainDao.address],
-      { initializer: "initialize" },
-    )) as unknown as DiamondDaoLowMajority;
-
-    await lowMajorityDao.waitForDeployment();
-
-    const reentrancyAttackerFactory = await ethers.getContractFactory("ReentrancyAttackerLowMajority");
-    const reentrancyAttacker = await reentrancyAttackerFactory.deploy();
-    await reentrancyAttacker.waitForDeployment();
-
-    const initBalance = ethers.parseEther("10000");
-    await setBalance(mainDao.address, initBalance * 2n);
+    const initBalance = parseEther("10000");
+    await helpers.setBalance(mainDao.account.address, initBalance * 2n);
 
     await mainDao.sendTransaction({
-      to: await lowMajorityDao.getAddress(),
+      to: lowMajorityDao.address,
       value: initBalance,
     });
 
@@ -60,269 +48,345 @@ describe("DiamondDaoLowMajority Contract", function () {
 
   describe("initialize", function () {
     it("should set the correct mainDao address", async function () {
-      const { lowMajorityDao } = await loadFixture(deployFixture);
+      const { lowMajorityDao } = await helpers.loadFixture(deployFixture);
 
-      expect(await lowMajorityDao.mainDao()).to.equal(mainDao.address);
+      assert.equal(
+        getAddress(await lowMajorityDao.read.mainDao()),
+        getAddress(mainDao.account.address),
+      );
     });
 
     it("should revert if initialized with zero address", async function () {
-      const factory = await ethers.getContractFactory("DiamondDaoLowMajority");
+      const implementation = await hhViem.deployContract("DiamondDaoLowMajority");
 
-      await expect(
-        upgrades.deployProxy(
-          factory,
-          [ethers.ZeroAddress],
-          { initializer: "initialize" },
-        )
-      ).to.be.revertedWithCustomError(factory, "InvalidArgument");
+      await hhViem.assertions.revertWithCustomError(
+        deployProxy(hhViem, "DiamondDaoLowMajority", {
+          initArgs: [zeroAddress],
+          initializer: "initialize",
+        }),
+        implementation,
+        "InvalidArgument",
+      );
     });
 
     it("should not allow reinitialization", async function () {
-      const { lowMajorityDao } = await loadFixture(deployFixture);
+      const { lowMajorityDao } = await helpers.loadFixture(deployFixture);
+      const implementation = await hhViem.deployContract("DiamondDaoLowMajority");
 
-      await expect(lowMajorityDao.initialize(mainDao.address))
-        .to.be.revertedWithCustomError(lowMajorityDao, "InvalidInitialization");
+      await hhViem.assertions.revertWithCustomError(
+        lowMajorityDao.write.initialize([mainDao.account.address]),
+        implementation,
+        "InvalidInitialization",
+      );
     });
   });
 
   describe("lowMajorityDaoPot", function () {
     it("should increase lowMajorityPot when receiving funds", async function () {
-      const { lowMajorityDao } = await loadFixture(deployFixture);
+      const { lowMajorityDao } = await helpers.loadFixture(deployFixture);
 
-      const sendAmount = ethers.parseEther("1");
+      const sendAmount = parseEther("1");
       const sender = users[0];
 
-      const potSizeBefore = await lowMajorityDao.lowMajorityPot();
+      const potSizeBefore = await lowMajorityDao.read.lowMajorityPot();
 
-      await expect(sender.sendTransaction({
-        to: await lowMajorityDao.getAddress(),
-        value: sendAmount
-      })).to.changeEtherBalance(await lowMajorityDao.getAddress(), sendAmount);
+      await hhViem.assertions.balancesHaveChanged(
+        sender.sendTransaction({
+          to: lowMajorityDao.address,
+          value: sendAmount,
+        }),
+        [
+          {
+            address: lowMajorityDao.address,
+            amount: sendAmount,
+          },
+        ],
+      );
 
-      expect(await lowMajorityDao.lowMajorityPot()).to.eq(potSizeBefore + sendAmount);
+      assert.equal(await lowMajorityDao.read.lowMajorityPot(), potSizeBefore + sendAmount);
     });
   });
 
   describe("execute", function () {
     it("should restrict calling only to main DAO contract", async function () {
-      const { lowMajorityDao } = await loadFixture(deployFixture);
+      const { lowMajorityDao } = await helpers.loadFixture(deployFixture);
 
       const caller = users[0];
 
-      await expect(lowMajorityDao.connect(caller).execute(
-        getRandomBigInt(),
-        [],
-        [],
-        []
-      )).to.be.revertedWithCustomError(lowMajorityDao, "OnlyGovernance");
+      await hhViem.assertions.revertWithCustomError(
+        lowMajorityDao.write.execute(
+          [getRandomBigInt(), [], [], []],
+          { account: caller.account },
+        ),
+        lowMajorityDao,
+        "OnlyGovernance",
+      );
     });
 
     it("should execute a proposal with one target", async function () {
-      const { lowMajorityDao } = await loadFixture(deployFixture);
+      const { lowMajorityDao } = await helpers.loadFixture(deployFixture);
 
       const proposalId = getRandomBigInt();
       const target = users[1];
-      const msgValue = ethers.parseEther("10");
+      const msgValue = parseEther("10");
 
-      const potSizeBefore = await lowMajorityDao.lowMajorityPot();
+      const potSizeBefore = await lowMajorityDao.read.lowMajorityPot();
 
-      const tx = lowMajorityDao.connect(mainDao).execute(
-        proposalId,
-        [target],
-        [msgValue],
-        [EmptyBytes]
+      const tx = lowMajorityDao.write.execute(
+        [proposalId, [target.account.address], [msgValue], [EmptyBytes]],
+        { account: mainDao.account },
       );
 
-      await expect(tx).to.emit(lowMajorityDao, "LowMajorityProposalExecuted").withArgs(proposalId);
-      await expect(tx).to.changeEtherBalances(
-        [await lowMajorityDao.getAddress(), target.address],
-        [-msgValue, msgValue]
+      await hhViem.assertions.emitWithArgs(
+        tx,
+        lowMajorityDao,
+        "LowMajorityProposalExecuted",
+        [proposalId],
       );
 
-      expect(await lowMajorityDao.lowMajorityPot()).to.eq(potSizeBefore - msgValue);
+      await hhViem.assertions.balancesHaveChanged(
+        tx,
+        [
+          {
+            address: lowMajorityDao.address,
+            amount: -msgValue,
+          },
+          {
+            address: target.account.address,
+            amount: msgValue,
+          },
+        ],
+      );
+
+      assert.equal(await lowMajorityDao.read.lowMajorityPot(), potSizeBefore - msgValue);
     });
 
     it("should execute a proposal with multiple targets", async function () {
-      const { lowMajorityDao } = await loadFixture(deployFixture);
+      const { lowMajorityDao } = await helpers.loadFixture(deployFixture);
 
       const alice = users[1];
       const bob = users[2];
 
-      const aliceAmount = ethers.parseEther("5");
-      const bobAmount = ethers.parseEther("10")
+      const aliceAmount = parseEther("5");
+      const bobAmount = parseEther("10");
 
       const proposalId = getRandomBigInt();
 
-      const tx = lowMajorityDao.connect(mainDao).execute(
-        proposalId,
-        [alice.address, bob.address],
-        [aliceAmount, bobAmount],
-        [EmptyBytes, EmptyBytes]
+      const tx = lowMajorityDao.write.execute(
+        [
+          proposalId,
+          [alice.account.address, bob.account.address],
+          [aliceAmount, bobAmount],
+          [EmptyBytes, EmptyBytes],
+        ],
+        { account: mainDao.account },
       );
 
-      await expect(tx).to.emit(lowMajorityDao, "LowMajorityProposalExecuted").withArgs(proposalId);
-      await expect(tx).to.changeEtherBalances(
-        [await lowMajorityDao.getAddress(), alice.address, bob.address],
-        [-(aliceAmount + bobAmount), aliceAmount, bobAmount]
+      await hhViem.assertions.emitWithArgs(
+        tx,
+        lowMajorityDao,
+        "LowMajorityProposalExecuted",
+        [proposalId],
+      );
+
+      await hhViem.assertions.balancesHaveChanged(
+        tx,
+        [
+          {
+            address: lowMajorityDao.address,
+            amount: -(aliceAmount + bobAmount),
+          },
+          {
+            address: alice.account.address,
+            amount: aliceAmount,
+          },
+          {
+            address: bob.account.address,
+            amount: bobAmount,
+          },
+        ],
       );
     });
 
     it("should execute contract calls with specific function data", async function () {
-      const { lowMajorityDao, mockReceiver } = await loadFixture(deployFixture);
+      const { lowMajorityDao, mockReceiver } = await helpers.loadFixture(deployFixture);
 
-      const calldata = mockReceiver.interface.encodeFunctionData("toggleReceive", [false]);
+      const calldata = encodeFunctionData({
+        abi: mockReceiver.abi,
+        functionName: "toggleReceive",
+        args: [false],
+      });
 
-      expect(await mockReceiver.allowReceive()).to.be.true;
+      assert.equal(await mockReceiver.read.allowReceive(), true);
 
-      await lowMajorityDao.connect(mainDao).execute(
-        getRandomBigInt(),
-        [await mockReceiver.getAddress()],
-        [0n],
-        [calldata]
+      await lowMajorityDao.write.execute(
+        [getRandomBigInt(), [mockReceiver.address], [0n], [calldata]],
+        { account: mainDao.account },
       );
 
-      expect(await mockReceiver.allowReceive()).to.be.false;
+      assert.equal(await mockReceiver.read.allowReceive(), false);
     });
 
     it("should revert if a target call fails", async function () {
-      const { lowMajorityDao, mockReceiver } = await loadFixture(deployFixture);
+      const { lowMajorityDao, mockReceiver } = await helpers.loadFixture(deployFixture);
 
-      const sendAmount = ethers.parseEther("5");
-      await mockReceiver.toggleReceive(false);
+      const sendAmount = parseEther("5");
+      await mockReceiver.write.toggleReceive([false]);
 
-      await expect(lowMajorityDao.connect(mainDao).execute(
-        getRandomBigInt(),
-        [await mockReceiver.getAddress()],
-        [sendAmount],
-        [EmptyBytes]
-      )).to.be.revertedWithCustomError(mockReceiver, "ReceiveDisabled");
+      await hhViem.assertions.revertWithCustomError(
+        lowMajorityDao.write.execute(
+          [getRandomBigInt(), [mockReceiver.address], [sendAmount], [EmptyBytes]],
+          { account: mainDao.account },
+        ),
+        mockReceiver,
+        "ReceiveDisabled",
+      );
     });
 
     it("should be non reentrant", async function () {
-      const { lowMajorityDao, reentrancyAttacker } = await loadFixture(deployFixture);
+      const { lowMajorityDao, reentrancyAttacker } = await helpers.loadFixture(deployFixture);
 
-      const sendAmount = ethers.parseEther("1");
+      const sendAmount = parseEther("1");
 
-      await expect(lowMajorityDao.connect(mainDao).execute(
-        getRandomBigInt(),
-        [await reentrancyAttacker.getAddress()],
-        [sendAmount],
-        [EmptyBytes]
-      )).to.be.revertedWithCustomError(lowMajorityDao, "ReentrancyGuardReentrantCall");
+      await hhViem.assertions.revertWithCustomError(
+        lowMajorityDao.write.execute(
+          [getRandomBigInt(), [reentrancyAttacker.address], [sendAmount], [EmptyBytes]],
+          { account: mainDao.account },
+        ),
+        lowMajorityDao,
+        "ReentrancyGuardReentrantCall",
+      );
     });
 
     it("should transfer ERC20 tokens", async function () {
-      const { lowMajorityDao, mockERC20 } = await loadFixture(deployFixture);
+      const { lowMajorityDao, mockERC20 } = await helpers.loadFixture(deployFixture);
 
       const proposalId = getRandomBigInt();
       const user = users[1];
-      const tokensAmount = ethers.parseEther("10");
-      const calldata = mockERC20.interface.encodeFunctionData("transfer", [user.address, tokensAmount])
+      const tokensAmount = parseEther("10");
+      const calldata = encodeFunctionData({
+        abi: mockERC20.abi,
+        functionName: "transfer",
+        args: [user.account.address, tokensAmount],
+      });
 
-      await mockERC20.mint(await lowMajorityDao.getAddress(), tokensAmount);
+      await mockERC20.write.mint([lowMajorityDao.address, tokensAmount]);
 
-
-      const tx = lowMajorityDao.connect(mainDao).execute(
-        proposalId,
-        [await mockERC20.getAddress()],
-        [0n],
-        [calldata]
+      await hhViem.assertions.emitWithArgs(
+        lowMajorityDao.write.execute(
+          [proposalId, [mockERC20.address], [0n], [calldata]],
+          { account: mainDao.account },
+        ),
+        lowMajorityDao,
+        "LowMajorityProposalExecuted",
+        [proposalId],
       );
 
-      await expect(tx).to.emit(lowMajorityDao, "LowMajorityProposalExecuted").withArgs(proposalId);
-      await expect(tx).to.changeTokenBalances(
-        mockERC20,
-        [await lowMajorityDao.getAddress(), user.address],
-        [-tokensAmount, tokensAmount]
-      );
+      assert.equal(await mockERC20.read.balanceOf([lowMajorityDao.address]), 0n);
+      assert.equal(await mockERC20.read.balanceOf([user.account.address]), tokensAmount);
     });
 
     it("should transfer ERC721 token", async function () {
-      const { lowMajorityDao, mockERC721 } = await loadFixture(deployFixture);
+      const { lowMajorityDao, mockERC721 } = await helpers.loadFixture(deployFixture);
 
       const proposalId = getRandomBigInt();
       const user = users[1];
       const tokenId = getRandomBigInt();
-      const daoAddress = await lowMajorityDao.getAddress();
+      const daoAddress = lowMajorityDao.address;
 
-      const calldata = mockERC721.interface.encodeFunctionData(
-        "transferFrom",
-        [daoAddress, user.address, tokenId],
+      const calldata = encodeFunctionData({
+        abi: mockERC721.abi,
+        functionName: "transferFrom",
+        args: [daoAddress, user.account.address, tokenId],
+      });
+
+      await mockERC721.write.mint([daoAddress, tokenId]);
+      assert.equal(getAddress(await mockERC721.read.ownerOf([tokenId])), getAddress(daoAddress));
+
+      await hhViem.assertions.emitWithArgs(
+        lowMajorityDao.write.execute(
+          [proposalId, [mockERC721.address], [0n], [calldata]],
+          { account: mainDao.account },
+        ),
+        lowMajorityDao,
+        "LowMajorityProposalExecuted",
+        [proposalId],
       );
 
-      await mockERC721.mint(daoAddress, tokenId);
-      expect(await mockERC721.ownerOf(tokenId)).to.eq(daoAddress);
-
-      const tx = lowMajorityDao.connect(mainDao).execute(
-        proposalId,
-        [await mockERC721.getAddress()],
-        [0n],
-        [calldata]
+      assert.equal(
+        getAddress(await mockERC721.read.ownerOf([tokenId])),
+        getAddress(user.account.address),
       );
-
-      await expect(tx).to.emit(lowMajorityDao, "LowMajorityProposalExecuted").withArgs(proposalId);
-      expect(await mockERC721.ownerOf(tokenId)).to.eq(user.address);
     });
 
     it("should transfer ERC1155 token", async function () {
-      const { lowMajorityDao, mockERC1155 } = await loadFixture(deployFixture);
+      const { lowMajorityDao, mockERC1155 } = await helpers.loadFixture(deployFixture);
 
       const proposalId = getRandomBigInt();
       const user = users[1];
       const tokenId = getRandomBigInt();
-      const tokensAmount = 1000;
-      const daoAddress = await lowMajorityDao.getAddress();
+      const tokensAmount = 1000n;
+      const daoAddress = lowMajorityDao.address;
 
-      const calldata = mockERC1155.interface.encodeFunctionData(
-        "safeTransferFrom",
-        [daoAddress, user.address, tokenId, tokensAmount, EmptyBytes],
+      const calldata = encodeFunctionData({
+        abi: mockERC1155.abi,
+        functionName: "safeTransferFrom",
+        args: [daoAddress, user.account.address, tokenId, tokensAmount, EmptyBytes],
+      });
+
+      await mockERC1155.write.mint([daoAddress, tokenId, tokensAmount]);
+      assert.equal(await mockERC1155.read.balanceOf([daoAddress, tokenId]), tokensAmount);
+
+      await hhViem.assertions.emitWithArgs(
+        lowMajorityDao.write.execute(
+          [proposalId, [mockERC1155.address], [0n], [calldata]],
+          { account: mainDao.account },
+        ),
+        lowMajorityDao,
+        "LowMajorityProposalExecuted",
+        [proposalId],
       );
 
-      await mockERC1155.mint(daoAddress, tokenId, tokensAmount);
-      expect(await mockERC1155.balanceOf(daoAddress, tokenId)).to.eq(tokensAmount);
-
-      const tx = lowMajorityDao.connect(mainDao).execute(
-        proposalId,
-        [await mockERC1155.getAddress()],
-        [0n],
-        [calldata]
-      );
-
-      await expect(tx).to.emit(lowMajorityDao, "LowMajorityProposalExecuted").withArgs(proposalId);
-      expect(await mockERC1155.balanceOf(daoAddress, tokenId)).to.eq(0);
-      expect(await mockERC1155.balanceOf(user.address, tokenId)).to.eq(tokensAmount);
+      assert.equal(await mockERC1155.read.balanceOf([daoAddress, tokenId]), 0n);
+      assert.equal(await mockERC1155.read.balanceOf([user.account.address, tokenId]), tokensAmount);
     });
   });
 
   describe("quorumReached", function () {
     it("should correctly determine if low majority quorum is reached", async function () {
-      const { lowMajorityDao } = await loadFixture(deployFixture);
+      const { lowMajorityDao } = await helpers.loadFixture(deployFixture);
 
       const votingResult = {
-        countYes: 100,
-        countNo: 50,
-        stakeYes: ethers.parseEther("1000"),
-        stakeNo: ethers.parseEther("500")
+        countYes: 100n,
+        countNo: 50n,
+        stakeYes: parseEther("1000"),
+        stakeNo: parseEther("500"),
       };
 
       const totalStakedAmount = votingResult.stakeYes + votingResult.stakeNo;
 
-      expect(await lowMajorityDao.quorumReached(votingResult, totalStakedAmount)).to.be.true;
+      assert.equal(
+        await lowMajorityDao.read.quorumReached([votingResult, totalStakedAmount]),
+        true,
+      );
     });
 
     it("should correctly determine if low majority quorum is not reached", async function () {
-      const { lowMajorityDao } = await loadFixture(deployFixture);
+      const { lowMajorityDao } = await helpers.loadFixture(deployFixture);
 
       const votingResult = {
-        countYes: 10,
-        countNo: 90,
-        stakeYes: ethers.parseEther("100"),
-        stakeNo: ethers.parseEther("1900")
+        countYes: 10n,
+        countNo: 90n,
+        stakeYes: parseEther("100"),
+        stakeNo: parseEther("1900"),
       };
 
       const totalStakedAmount = votingResult.stakeYes + votingResult.stakeNo;
 
-      expect(await lowMajorityDao.quorumReached(votingResult, totalStakedAmount)).to.be.false;
+      assert.equal(
+        await lowMajorityDao.read.quorumReached([votingResult, totalStakedAmount]),
+        false,
+      );
     });
   });
 });

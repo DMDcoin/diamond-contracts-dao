@@ -1,8 +1,8 @@
-import { ethers } from "hardhat";
-import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { Account, Address, Hex, parseEther } from "viem";
 
-import { DiamondDao } from "../../typechain-types";
-import { EmptyBytes } from "./utils";
+import { DiamondDao } from "./types.js";
+import { EmptyBytes } from "./utils.js";
+import assert from "node:assert";
 
 
 export enum ProposalType {
@@ -36,22 +36,22 @@ export type CreateProposalOpts = {
   title?: string;
   description?: string;
   url?: string;
-  targets?: string[];
+  targets?: Address[];
   values?: bigint[];
-  calldatas?: string[];
+  calldatas?: Hex[];
   majority?: OpenProposalMajority;
   createProposalFee?: bigint;
 }
 
-export const CreateProposalFee = ethers.parseEther("50");
+export const CreateProposalFee = parseEther("50");
 
 export async function createProposal(
   dao: DiamondDao,
-  proposer: HardhatEthersSigner,
+  proposer: Account,
   opts: CreateProposalOpts = {}
 ) {
   const _targets = opts.targets || [proposer.address];
-  const _values = opts.values || [ethers.parseEther('100')];
+  const _values = opts.values || [parseEther('100')];
   const _calldatas = opts.calldatas || [EmptyBytes];
   const _description = opts.description || "fund user";
   const _title = opts.title || "title";
@@ -60,14 +60,14 @@ export async function createProposal(
 
   const _createProposalFee = opts.createProposalFee || CreateProposalFee;
 
-  const proposalId = await dao.hashProposal(
+  const proposalId = await dao.read.hashProposal([
     _targets,
     _values,
     _calldatas,
     _description
-  );
+  ]);
 
-  await dao.connect(proposer).propose(
+  await dao.write.propose([
     _targets,
     _values,
     _calldatas,
@@ -75,8 +75,11 @@ export async function createProposal(
     _description,
     _url,
     _majority,
-    { value: _createProposalFee }
+  ],
+    { value: _createProposalFee, account: proposer }
   );
+
+  assert.ok(await dao.read.proposalExists([proposalId]));
 
   return { proposalId, _targets, _values, _calldatas, _description }
 }

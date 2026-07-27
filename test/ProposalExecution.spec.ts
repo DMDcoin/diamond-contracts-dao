@@ -1,118 +1,125 @@
+import assert from "node:assert/strict";
+import { describe, it, before } from "node:test";
 import hre from "hardhat";
-import { ethers, upgrades } from "hardhat";
-import { expect } from "chai";
-import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { loadFixture, setBalance, time } from "@nomicfoundation/hardhat-network-helpers";
-import { attachProxyAdminV5 } from "@openzeppelin/hardhat-upgrades/dist/utils";
 
-import { DiamondDao, MockDiamondDaoLowMajority, MockStakingHbbft, MockValidatorSetHbbft } from "../typechain-types";
-import { createProposal, OpenProposalMajority, ProposalState, ProposalType, Vote } from "./fixture/proposal";
-import { EmptyBytes, getRandomBigInt } from "./fixture/utils";
+import { type Address, encodeFunctionData, getAddress, type Hex, parseEther } from "viem";
+
+import {
+  addressFromStorageSlot,
+  deployProxy,
+  ERC1967AdminSlot,
+  ERC1967ImplementationSlot,
+} from "./fixtures/proxy.js";
+import { createRandomWallet } from "./fixtures/wallet.js";
+
+import {
+  createProposal,
+  OpenProposalMajority,
+  ProposalState,
+  ProposalType,
+  Vote,
+} from "./fixtures/proposal.js";
+
+import { DiamondDao, MockStakingHbbft, MockValidatorSetHbbft } from "./fixtures/types.js";
+import { EmptyBytes, getRandomBigInt } from "./fixtures/utils.js";
+
+const connection = await hre.network.getOrCreate();
+const { viem: hhViem, networkHelpers: helpers } = connection;
+
+const publicClient = await hhViem.getPublicClient();
+type TestWalletClient = Awaited<ReturnType<typeof hhViem.getWalletClients>>[number];
 
 describe("DAO proposal execution", function () {
-  let users: HardhatEthersSigner[];
-  let owner: HardhatEthersSigner;
-  let reinsertPot: HardhatEthersSigner;
+  let users: TestWalletClient[];
+  let owner: TestWalletClient;
+  let reinsertPot: TestWalletClient;
 
-  const createProposalFee = ethers.parseEther("10");
-  const governancePotValue = ethers.parseEther('500');
+  const createProposalFee = parseEther("10");
+  const governancePotValue = parseEther("500");
 
   before(async () => {
-    const signers = await ethers.getSigners();
+    const signers = await hhViem.getWalletClients();
 
     owner = signers[0];
     reinsertPot = signers[1];
-
     users = signers.slice(2);
   });
 
   async function deployFixture() {
-    const daoFactory = await ethers.getContractFactory("DiamondDao");
-    const mockFactory = await ethers.getContractFactory("MockValidatorSetHbbft");
-    const stakingFactory = await ethers.getContractFactory("MockStakingHbbft");
+    const mockValidatorSet = await hhViem.deployContract("MockValidatorSetHbbft");
+    const mockStaking = await hhViem.deployContract("MockStakingHbbft", [mockValidatorSet.address]);
 
-    const mockValidatorSet = await mockFactory.deploy();
-    await mockValidatorSet.waitForDeployment();
+    const mockTxPermission = createRandomWallet().address;
+    const mockBonusScore = createRandomWallet().address;
 
-    const mockStaking = await stakingFactory.deploy(await mockValidatorSet.getAddress());
-    await mockStaking.waitForDeployment();
-
-    const mockTxPermission = ethers.Wallet.createRandom().address;
-    const mockBonusScore = ethers.Wallet.createRandom().address;
-
-    const daoLowMajorityFactory = await ethers.getContractFactory("MockDiamondDaoLowMajority");
-    const daoLowMajority = await upgrades.deployProxy(
-      daoLowMajorityFactory,
-      [owner.address],
-      { initializer: 'initialize' }
-    ) as unknown as MockDiamondDaoLowMajority;
-
-    await daoLowMajority.waitForDeployment();
-
-    const startTime = await time.latest();
-
-    const dao = (await upgrades.deployProxy(daoFactory, [
-      owner.address,
-      await mockValidatorSet.getAddress(),
-      await mockStaking.getAddress(),
-      reinsertPot.address,
-      mockTxPermission,
-      mockBonusScore,
-      await daoLowMajority.getAddress(),
-      createProposalFee,
-      startTime + 10
-    ], {
+    const daoLowMajority = await deployProxy(hhViem, "MockDiamondDaoLowMajority", {
+      initArgs: [owner.account.address],
       initializer: "initialize",
-    })) as unknown as DiamondDao;
+    });
 
-    await dao.waitForDeployment();
+    const startTime = await helpers.time.latest();
 
-    await daoLowMajority.setMainDaoAddress(await dao.getAddress());
+    const dao = await deployProxy(hhViem, "DiamondDao", {
+      initArgs: [
+        owner.account.address,
+        mockValidatorSet.address,
+        mockStaking.address,
+        reinsertPot.account.address,
+        mockTxPermission,
+        mockBonusScore,
+        daoLowMajority.address,
+        createProposalFee,
+        startTime + 10,
+      ],
+      initializer: "initialize",
+    });
 
-    await setBalance(owner.address, governancePotValue * 10n);
+    await daoLowMajority.write.setMainDaoAddress([dao.address]);
+
+    await helpers.setBalance(owner.account.address, governancePotValue * 10n);
 
     await owner.sendTransaction({
       value: governancePotValue,
-      to: await dao.getAddress()
+      to: dao.address,
     });
 
     await owner.sendTransaction({
       value: governancePotValue,
-      to: await daoLowMajority.getAddress()
+      to: daoLowMajority.address,
     });
 
     return { dao, daoLowMajority, mockValidatorSet, mockStaking };
   }
 
   async function swithPhase(dao: DiamondDao) {
-    const phase = await dao.daoPhase();
-    await time.increaseTo(phase.end + 1n);
+    const [, end, ,] = await dao.read.daoPhase();
+    await helpers.time.increaseTo(end + 1n);
 
-    await dao.switchPhase();
+    await dao.write.switchPhase();
   }
 
   async function addValidatorsStake(
     validatorSet: MockValidatorSetHbbft,
     staking: MockStakingHbbft,
-    validators: HardhatEthersSigner[],
+    validators: TestWalletClient[],
     stakeAmount?: bigint
-  ): Promise<void> {
-    const stake = stakeAmount ? stakeAmount : ethers.parseEther('10');
+  ) {
+    const stake = stakeAmount ? stakeAmount : parseEther("10");
 
     for (const validator of validators) {
-      await validatorSet.add(validator.address, validator.address, true);
-      await staking.setStake(validator.address, stake);
+      await validatorSet.write.add([validator.account.address, validator.account.address, true]);
+      await staking.write.setStake([validator.account.address, stake]);
     }
   }
 
   async function vote(
     dao: DiamondDao,
     proposalId: bigint,
-    voters: HardhatEthersSigner[],
+    voters: TestWalletClient[],
     vote: Vote
-  ): Promise<void> {
+  ) {
     for (const voter of voters) {
-      await dao.connect(voter).vote(proposalId, vote);
+      await dao.write.vote([proposalId, vote], { account: voter.account });
     }
   }
 
@@ -121,22 +128,22 @@ describe("DAO proposal execution", function () {
     mockValidatorSet: MockValidatorSetHbbft,
     mockStaking: MockStakingHbbft,
     _vote: Vote,
-    targets?: string[],
+    targets?: Address[],
     values?: bigint[],
-    calldatas?: string[]
+    calldatas?: Hex[]
   ) {
     const proposer = users[2];
     const voters = users.slice(10, 25);
 
     const { proposalId } = await createProposal(
       dao,
-      proposer,
+      proposer.account,
       {
         description: getRandomBigInt().toString(),
-        targets: targets,
-        values: values,
-        calldatas: calldatas,
-        createProposalFee: createProposalFee,
+        targets,
+        values,
+        calldatas,
+        createProposalFee,
       }
     );
 
@@ -146,7 +153,7 @@ describe("DAO proposal execution", function () {
 
     await swithPhase(dao);
 
-    await dao.finalize(proposalId);
+    await dao.write.finalize([proposalId]);
 
     return { proposalId, proposer };
   }
@@ -154,44 +161,62 @@ describe("DAO proposal execution", function () {
   describe("self function calls", async function () {
     it("should not allow to set createProposalFee = 0", async function () {
       const proposer = users[2];
-      const { dao } = await loadFixture(deployFixture);
+      const { dao } = await helpers.loadFixture(deployFixture);
 
       const newVal = 0n;
-      const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [newVal]);
+      const calldata = encodeFunctionData({
+        abi: dao.abi,
+        functionName: "setCreateProposalFee",
+        args: [newVal],
+      });
 
-      await expect(dao.connect(proposer).propose(
-        [await dao.getAddress()],
-        [0n],
-        [calldata],
-        "title",
-        "test",
-        "url",
-        OpenProposalMajority.Low,
-        { value: createProposalFee }
-      )).to.be.revertedWithCustomError(dao, "NewValueOutOfRange").withArgs(newVal);
+      await hhViem.assertions.revertWithCustomErrorWithArgs(
+        dao.write.propose(
+          [
+            [dao.address],
+            [0n],
+            [calldata],
+            "title",
+            "test",
+            "url",
+            OpenProposalMajority.Low,
+          ],
+          { value: createProposalFee, account: proposer.account },
+        ),
+        dao,
+        "NewValueOutOfRange",
+        [newVal],
+      );
     });
 
     it("should update createProposalFee using proposal", async function () {
       const proposer = users[2];
-      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
-      const newFeeValue = ethers.parseEther('20');
-      const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [newFeeValue]);
+      const { dao, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture);
+      const newFeeValue = parseEther("20");
+      const calldata = encodeFunctionData({
+        abi: dao.abi,
+        functionName: "setCreateProposalFee",
+        args: [newFeeValue],
+      });
 
       const { proposalId } = await finalizedProposal(
         dao,
         mockValidatorSet,
         mockStaking,
         Vote.Yes,
-        [await dao.getAddress()],
+        [dao.address],
         [0n],
         [calldata]
       );
 
-      await expect(dao.connect(proposer).execute(proposalId))
-        .to.emit(dao, "SetCreateProposalFee")
-        .withArgs(newFeeValue);
+      await hhViem.assertions.emitWithArgs(
+        dao.write.execute([proposalId], { account: proposer.account }),
+        dao,
+        "SetCreateProposalFee",
+        [newFeeValue],
+      );
 
-      expect(await dao.createProposalFee()).to.equal(newFeeValue);
+      assert.equal(await dao.read.createProposalFee(), newFeeValue);
     });
 
     it("should update createProposalFee and refund original fee to proposers", async function () {
@@ -199,33 +224,37 @@ describe("DAO proposal execution", function () {
       const secondProposer = users[3];
       const voters = users.slice(5, 15);
 
-      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture);
 
       const originalFeeValue = createProposalFee;
-      const newFeeValue = ethers.parseEther('20');
-      const calldata = dao.interface.encodeFunctionData("setCreateProposalFee", [newFeeValue]);
+      const newFeeValue = parseEther("20");
+      const calldata = encodeFunctionData({
+        abi: dao.abi,
+        functionName: "setCreateProposalFee",
+        args: [newFeeValue],
+      });
 
       const { proposalId: firstProposalId } = await createProposal(
         dao,
-        firstProposer,
+        firstProposer.account,
         {
           description: getRandomBigInt().toString(),
-          targets: [await dao.getAddress()],
+          targets: [dao.address],
           values: [0n],
           calldatas: [calldata],
-          createProposalFee: createProposalFee,
+          createProposalFee,
         }
       );
 
       const { proposalId: secondProposalId } = await createProposal(
         dao,
-        secondProposer,
+        secondProposer.account,
         {
           description: getRandomBigInt().toString(),
-          targets: [await dao.getAddress()],
+          targets: [dao.address],
           values: [0n],
           calldatas: [calldata],
-          createProposalFee: createProposalFee,
+          createProposalFee,
         }
       );
 
@@ -235,25 +264,42 @@ describe("DAO proposal execution", function () {
       await vote(dao, secondProposalId, voters, Vote.Yes);
       await swithPhase(dao);
 
-      await expect(
-        await dao.finalize(firstProposalId)
-      ).to.changeEtherBalances(
-        [await dao.getAddress(), firstProposer.address],
-        [-originalFeeValue, originalFeeValue]
+      await hhViem.assertions.balancesHaveChanged(
+        dao.write.finalize([firstProposalId]),
+        [
+          {
+            address: dao.address,
+            amount: -originalFeeValue,
+          },
+          {
+            address: firstProposer.account.address,
+            amount: originalFeeValue,
+          },
+        ],
       );
 
-      await expect(dao.connect(firstProposer).execute(firstProposalId))
-        .to.emit(dao, "SetCreateProposalFee")
-        .withArgs(newFeeValue);
+      await hhViem.assertions.emitWithArgs(
+        dao.write.execute([firstProposalId], { account: firstProposer.account }),
+        dao,
+        "SetCreateProposalFee",
+        [newFeeValue],
+      );
 
-      expect(await dao.createProposalFee()).to.equal(newFeeValue);
+      assert.equal(await dao.read.createProposalFee(), newFeeValue);
 
-      // even after fee is changed the user should get his original fee back\
-      await expect(
-        await dao.finalize(secondProposalId)
-      ).to.changeEtherBalances(
-        [await dao.getAddress(), secondProposer.address],
-        [-originalFeeValue, originalFeeValue]
+      // even after fee is changed the user should get his original fee back
+      await hhViem.assertions.balancesHaveChanged(
+        dao.write.finalize([secondProposalId]),
+        [
+          {
+            address: dao.address,
+            amount: -originalFeeValue,
+          },
+          {
+            address: secondProposer.account.address,
+            amount: originalFeeValue,
+          },
+        ],
       );
     });
   });
@@ -261,51 +307,62 @@ describe("DAO proposal execution", function () {
   describe("self upgrade", async function () {
     it("should perform DAO self upgrade", async function () {
       const proposer = users[2];
-      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture);
 
-      const daoAddress = await dao.getAddress();
-      // const proxyAdmin = await upgrades.admin.getInstance();
+      const daoAddress = dao.address;
 
-      const proxyAdmin = await attachProxyAdminV5(
-        hre,
-        await upgrades.erc1967.getAdminAddress(daoAddress)
+      const proxyAdminAddress = addressFromStorageSlot(
+        await helpers.getStorageAt(daoAddress, ERC1967AdminSlot),
+      );
+      const proxyAdmin = await hhViem.getContractAt("ProxyAdmin", proxyAdminAddress);
+
+      await proxyAdmin.write.transferOwnership([daoAddress], { account: owner.account });
+      assert.equal(
+        getAddress(await proxyAdmin.read.owner()),
+        getAddress(daoAddress),
       );
 
-      await proxyAdmin.transferOwnership(daoAddress);
-      expect(await proxyAdmin.owner()).to.equal(daoAddress);
+      const newImplementation = await hhViem.deployContract("DiamondDao");
 
-      const factory = await ethers.getContractFactory("DiamondDao");
-      const newImplementation = await upgrades.deployImplementation(factory);
+      assert.notEqual(getAddress(daoAddress), getAddress(newImplementation.address));
 
-      expect(daoAddress).to.not.equal(newImplementation);
-
-      const calldata = proxyAdmin.interface.encodeFunctionData("upgradeAndCall", [
-        daoAddress,
-        newImplementation,
-        EmptyBytes,
-      ]);
+      const calldata = encodeFunctionData({
+        abi: proxyAdmin.abi,
+        functionName: "upgradeAndCall",
+        args: [daoAddress, newImplementation.address, EmptyBytes],
+      });
 
       const { proposalId } = await finalizedProposal(
         dao,
         mockValidatorSet,
         mockStaking,
         Vote.Yes,
-        [await proxyAdmin.getAddress()],
+        [proxyAdmin.address],
         [0n],
         [calldata]
       );
 
-      await expect(dao.connect(proposer).execute(proposalId))
-        .to.emit(dao, "ProposalExecuted")
-        .withArgs(proposer.address, proposalId);
+      await hhViem.assertions.emitWithArgs(
+        dao.write.execute([proposalId], { account: proposer.account }),
+        dao,
+        "ProposalExecuted",
+        [proposer.account.address, proposalId],
+      );
 
-      expect(await upgrades.erc1967.getImplementationAddress(daoAddress)).to.equal(newImplementation);
+      const implementationAddress = addressFromStorageSlot(
+        await helpers.getStorageAt(daoAddress, ERC1967ImplementationSlot),
+      );
+
+      assert.equal(
+        getAddress(implementationAddress),
+        getAddress(newImplementation.address),
+      );
     });
   });
 
   describe("funds transfer from governance pot", async function () {
     it("should revert funding with insufficient governance pot balance", async function () {
-      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture);
 
       const fundsRequest = governancePotValue * 2n;
       const fundsReceiver = users[12];
@@ -315,17 +372,20 @@ describe("DAO proposal execution", function () {
         mockValidatorSet,
         mockStaking,
         Vote.Yes,
-        [fundsReceiver.address],
+        [fundsReceiver.account.address],
         [fundsRequest],
         [EmptyBytes]
       );
 
-      await expect(dao.connect(proposer).execute(proposalId))
-        .to.be.revertedWithCustomError(dao, "FailedInnerCall");
+      await hhViem.assertions.revertWithCustomError(
+        dao.write.execute([proposalId], { account: proposer.account }),
+        dao,
+        "FailedInnerCall",
+      );
     });
 
     it("should transfer funds from governance pot and confirm Open proposalType", async function () {
-      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture);
 
       const fundsRequest = governancePotValue;
       const fundsReceiver = users[12];
@@ -335,67 +395,79 @@ describe("DAO proposal execution", function () {
         mockValidatorSet,
         mockStaking,
         Vote.Yes,
-        [fundsReceiver.address],
+        [fundsReceiver.account.address],
         [fundsRequest],
         [EmptyBytes]
       );
 
-      expect((await dao.getProposal(proposalId)).proposalType).to.equal(0);
+      assert.equal(
+        (await dao.read.getProposal([proposalId])).proposalType,
+        ProposalType.OpenLowMajority,
+      );
 
-      await expect(dao.execute(proposalId))
-        .to.changeEtherBalances(
-          [await daoLowMajority.getAddress(), fundsReceiver.address],
-          [-fundsRequest, fundsRequest]
-        );
+      await hhViem.assertions.balancesHaveChanged(
+        dao.write.execute([proposalId]),
+        [
+          {
+            address: daoLowMajority.address,
+            amount: -fundsRequest,
+          },
+          {
+            address: fundsReceiver.account.address,
+            amount: fundsRequest,
+          },
+        ],
+      );
     });
   });
 
   describe("reentrancy protection", async function () {
     it("should revert reentrant calls to execute", async function () {
-      const { dao, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture);
 
-      const attackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
-      const attacker = await attackerFactory.deploy(await dao.getAddress());
-
-      await attacker.waitForDeployment();
+      const attacker = await hhViem.deployContract("ReentrancyAttacker", [dao.address]);
 
       const { proposalId } = await finalizedProposal(
         dao,
         mockValidatorSet,
         mockStaking,
         Vote.Yes,
-        [await attacker.getAddress()],
-        [ethers.parseEther('50')],
+        [attacker.address],
+        [parseEther("50")],
         [EmptyBytes]
       );
 
-      await attacker.setId(proposalId);
+      await attacker.write.setId([proposalId]);
 
-      await expect(attacker.attack()).to.be.revertedWithCustomError(dao, "ReentrancyGuardReentrantCall");
+      await hhViem.assertions.revertWithCustomError(
+        attacker.write.attack(),
+        dao,
+        "ReentrancyGuardReentrantCall",
+      );
     });
   });
 
   describe("open proposal with low majority", async function () {
     it("should transfer funds from low majority dao pot", async function () {
-      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture);
 
       const fundsRequest = governancePotValue;
       const fundsReceiver = users[12];
 
       const proposer = users[2];
       const votersYes = users.slice(10, 20); // 10
-      const votersNo = users.slice(20, 25);  // 5
+      const votersNo = users.slice(20, 25); // 5
 
       const { proposalId } = await createProposal(
         dao,
-        proposer,
+        proposer.account,
         {
           description: getRandomBigInt().toString(),
-          targets: [fundsReceiver.address],
+          targets: [fundsReceiver.account.address],
           values: [fundsRequest],
           calldatas: [EmptyBytes],
           majority: OpenProposalMajority.Low,
-          createProposalFee: createProposalFee,
+          createProposalFee,
         }
       );
 
@@ -406,41 +478,55 @@ describe("DAO proposal execution", function () {
 
       await swithPhase(dao);
 
-      await dao.finalize(proposalId);
+      await dao.write.finalize([proposalId]);
 
-      expect((await dao.getProposal(proposalId)).proposalType).to.equal(ProposalType.OpenLowMajority);
+      assert.equal(
+        (await dao.read.getProposal([proposalId])).proposalType,
+        ProposalType.OpenLowMajority,
+      );
 
-      const mainDaoBalanceBefore = await ethers.provider.getBalance(await dao.getAddress());
+      const mainDaoBalanceBefore = await publicClient.getBalance({ address: dao.address });
 
-      await expect(dao.execute(proposalId))
-        .to.changeEtherBalances(
-          [await daoLowMajority.getAddress(), fundsReceiver.address],
-          [-fundsRequest, fundsRequest]
-        );
+      await hhViem.assertions.balancesHaveChanged(
+        dao.write.execute([proposalId]),
+        [
+          {
+            address: daoLowMajority.address,
+            amount: -fundsRequest,
+          },
+          {
+            address: fundsReceiver.account.address,
+            amount: fundsRequest,
+          },
+        ],
+      );
 
-      expect(await ethers.provider.getBalance(await dao.getAddress())).to.eq(mainDaoBalanceBefore);
+      assert.equal(
+        await publicClient.getBalance({ address: dao.address }),
+        mainDaoBalanceBefore,
+      );
     });
-    
+
     it("should decline proposal if low majority quorum not reached", async function () {
-      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture);
 
       const fundsRequest = governancePotValue;
       const fundsReceiver = users[12];
 
       const proposer = users[2];
       const votersYes = users.slice(10, 19); // 9
-      const votersNo = users.slice(19, 25);  // 6
+      const votersNo = users.slice(19, 25); // 6
 
       const { proposalId } = await createProposal(
         dao,
-        proposer,
+        proposer.account,
         {
           description: getRandomBigInt().toString(),
-          targets: [fundsReceiver.address],
+          targets: [fundsReceiver.account.address],
           values: [fundsRequest],
           calldatas: [EmptyBytes],
           majority: OpenProposalMajority.Low,
-          createProposalFee: createProposalFee,
+          createProposalFee,
         }
       );
 
@@ -451,46 +537,57 @@ describe("DAO proposal execution", function () {
 
       await swithPhase(dao);
 
-      await dao.finalize(proposalId);
+      await dao.write.finalize([proposalId]);
 
-      const proposalData = await dao.getProposal(proposalId);
+      const proposalData = await dao.read.getProposal([proposalId]);
 
-      expect(proposalData.proposalType).to.equal(ProposalType.OpenLowMajority);
-      expect(proposalData.state).to.equal(ProposalState.Declined);
+      assert.equal(proposalData.proposalType, ProposalType.OpenLowMajority);
+      assert.equal(proposalData.state, ProposalState.Declined);
 
-      const mainDaoBalanceBefore = await ethers.provider.getBalance(await dao.getAddress());
-      const lowMajorityDaoBalanceBefore = await ethers.provider.getBalance(await daoLowMajority.getAddress());
+      const mainDaoBalanceBefore = await publicClient.getBalance({ address: dao.address });
+      const lowMajorityDaoBalanceBefore = await publicClient.getBalance({
+        address: daoLowMajority.address,
+      });
 
-      await expect(dao.execute(proposalId))
-        .to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
-        .withArgs(proposalId, ProposalState.Declined);
+      await hhViem.assertions.revertWithCustomErrorWithArgs(
+        dao.write.execute([proposalId]),
+        dao,
+        "UnexpectedProposalState",
+        [proposalId, ProposalState.Declined],
+      );
 
-      expect(await ethers.provider.getBalance(await dao.getAddress())).to.eq(mainDaoBalanceBefore);
-      expect(await ethers.provider.getBalance(await daoLowMajority.getAddress())).to.eq(lowMajorityDaoBalanceBefore);
+      assert.equal(
+        await publicClient.getBalance({ address: dao.address }),
+        mainDaoBalanceBefore,
+      );
+      assert.equal(
+        await publicClient.getBalance({ address: daoLowMajority.address }),
+        lowMajorityDaoBalanceBefore,
+      );
     });
   });
 
   describe("open proposal with high majority", async function () {
     it("should transfer funds from high majority dao pot", async function () {
-      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture);
 
       const fundsRequest = governancePotValue;
       const fundsReceiver = users[12];
 
       const proposer = users[2];
       const votersYes = users.slice(10, 22); // 12
-      const votersNo = users.slice(22, 25);  // 3
+      const votersNo = users.slice(22, 25); // 3
 
       const { proposalId } = await createProposal(
         dao,
-        proposer,
+        proposer.account,
         {
           description: getRandomBigInt().toString(),
-          targets: [fundsReceiver.address],
+          targets: [fundsReceiver.account.address],
           values: [fundsRequest],
           calldatas: [EmptyBytes],
           majority: OpenProposalMajority.High,
-          createProposalFee: createProposalFee,
+          createProposalFee,
         }
       );
 
@@ -500,41 +597,57 @@ describe("DAO proposal execution", function () {
       await vote(dao, proposalId, votersNo, Vote.No);
 
       await swithPhase(dao);
-      await dao.finalize(proposalId);
+      await dao.write.finalize([proposalId]);
 
-      expect((await dao.getProposal(proposalId)).proposalType).to.equal(ProposalType.OpenHighMajority);
+      assert.equal(
+        (await dao.read.getProposal([proposalId])).proposalType,
+        ProposalType.OpenHighMajority,
+      );
 
-      const lowMajorityDaoBalanceBefore = await ethers.provider.getBalance(await daoLowMajority.getAddress());
+      const lowMajorityDaoBalanceBefore = await publicClient.getBalance({
+        address: daoLowMajority.address,
+      });
 
-      await expect(dao.execute(proposalId))
-        .to.changeEtherBalances(
-          [await dao.getAddress(), fundsReceiver.address],
-          [-fundsRequest, fundsRequest]
-        );
+      await hhViem.assertions.balancesHaveChanged(
+        dao.write.execute([proposalId]),
+        [
+          {
+            address: dao.address,
+            amount: -fundsRequest,
+          },
+          {
+            address: fundsReceiver.account.address,
+            amount: fundsRequest,
+          },
+        ],
+      );
 
-      expect(await ethers.provider.getBalance(await daoLowMajority.getAddress())).to.eq(lowMajorityDaoBalanceBefore);
+      assert.equal(
+        await publicClient.getBalance({ address: daoLowMajority.address }),
+        lowMajorityDaoBalanceBefore,
+      );
     });
-    
+
     it("should decline proposal if low majority quorum not reached", async function () {
-      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await loadFixture(deployFixture);
+      const { dao, daoLowMajority, mockValidatorSet, mockStaking } = await helpers.loadFixture(deployFixture);
 
       const fundsRequest = governancePotValue;
       const fundsReceiver = users[12];
 
       const proposer = users[2];
       const votersYes = users.slice(10, 21); // 11
-      const votersNo = users.slice(21, 25);  // 4
+      const votersNo = users.slice(21, 25); // 4
 
       const { proposalId } = await createProposal(
         dao,
-        proposer,
+        proposer.account,
         {
           description: getRandomBigInt().toString(),
-          targets: [fundsReceiver.address],
+          targets: [fundsReceiver.account.address],
           values: [fundsRequest],
           calldatas: [EmptyBytes],
           majority: OpenProposalMajority.High,
-          createProposalFee: createProposalFee,
+          createProposalFee,
         }
       );
 
@@ -544,22 +657,33 @@ describe("DAO proposal execution", function () {
       await vote(dao, proposalId, votersNo, Vote.No);
 
       await swithPhase(dao);
-      await dao.finalize(proposalId);
+      await dao.write.finalize([proposalId]);
 
-      const proposalData = await dao.getProposal(proposalId);
+      const proposalData = await dao.read.getProposal([proposalId]);
 
-      expect(proposalData.proposalType).to.equal(ProposalType.OpenHighMajority);
-      expect(proposalData.state).to.equal(ProposalState.Declined);
+      assert.equal(proposalData.proposalType, ProposalType.OpenHighMajority);
+      assert.equal(proposalData.state, ProposalState.Declined);
 
-      const mainDaoBalanceBefore = await ethers.provider.getBalance(await dao.getAddress());
-      const lowMajorityDaoBalanceBefore = await ethers.provider.getBalance(await daoLowMajority.getAddress());
+      const mainDaoBalanceBefore = await publicClient.getBalance({ address: dao.address });
+      const lowMajorityDaoBalanceBefore = await publicClient.getBalance({
+        address: daoLowMajority.address,
+      });
 
-      await expect(dao.execute(proposalId))
-        .to.be.revertedWithCustomError(dao, "UnexpectedProposalState")
-        .withArgs(proposalId, ProposalState.Declined);
+      await hhViem.assertions.revertWithCustomErrorWithArgs(
+        dao.write.execute([proposalId]),
+        dao,
+        "UnexpectedProposalState",
+        [proposalId, ProposalState.Declined],
+      );
 
-      expect(await ethers.provider.getBalance(await dao.getAddress())).to.eq(mainDaoBalanceBefore);
-      expect(await ethers.provider.getBalance(await daoLowMajority.getAddress())).to.eq(lowMajorityDaoBalanceBefore);
+      assert.equal(
+        await publicClient.getBalance({ address: dao.address }),
+        mainDaoBalanceBefore,
+      );
+      assert.equal(
+        await publicClient.getBalance({ address: daoLowMajority.address }),
+        lowMajorityDaoBalanceBefore,
+      );
     });
   });
 });

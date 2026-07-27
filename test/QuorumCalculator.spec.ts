@@ -1,11 +1,15 @@
-import { expect } from "chai";
-import { ethers } from "hardhat";
-import * as helpers from "@nomicfoundation/hardhat-network-helpers";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import hre from "hardhat";
+
+import { parseEther } from "viem";
+
+const connection = await hre.network.getOrCreate();
+const { viem: hhViem, networkHelpers: helpers } = connection;
 
 describe("QuorumCalculator library", function () {
   async function deployContracts() {
-    const factory = await ethers.getContractFactory("MockQuorumCalculator");
-    const quorumCalculator = (await factory.deploy());
+    const quorumCalculator = await hhViem.deployContract("MockQuorumCalculator");
 
     return { quorumCalculator };
   }
@@ -14,32 +18,32 @@ describe("QuorumCalculator library", function () {
     const TestCases = [
       {
         name: "all votes are Yes",
-        stakeYes: ethers.parseEther("1000"),
+        stakeYes: parseEther("1000"),
         stakeNo: 0n,
         expectedResult: true,
       },
       {
         name: "Yes votes exceed No votes by at least 1/3 of total",
-        stakeYes: ethers.parseEther("700"),
-        stakeNo: ethers.parseEther("300"),
+        stakeYes: parseEther("700"),
+        stakeNo: parseEther("300"),
         expectedResult: true,
       },
       {
         name: "Yes votes exactly meet the required threshold (1/3 of total)",
-        stakeYes: ethers.parseEther("666"),
-        stakeNo: ethers.parseEther("333"),
+        stakeYes: parseEther("666"),
+        stakeNo: parseEther("333"),
         expectedResult: true,
       },
       {
         name: "all votes are No",
         stakeYes: 0n,
-        stakeNo: ethers.parseEther("1000"),
+        stakeNo: parseEther("1000"),
         expectedResult: false,
       },
       {
         name: "Yes votes don't exceed No votes by required threshold",
-        stakeYes: ethers.parseEther("600"),
-        stakeNo: ethers.parseEther("400"),
+        stakeYes: parseEther("600"),
+        stakeNo: parseEther("400"),
         expectedResult: false,
       },
       {
@@ -48,8 +52,8 @@ describe("QuorumCalculator library", function () {
         // No * 6 + required = 334 * 6 + 2000 = 4004
         // 3996 < 4004
         name: "Yes votes exceed No in 1/3 corner case",
-        stakeYes: ethers.parseEther("666"),
-        stakeNo: ethers.parseEther("334"),
+        stakeYes: parseEther("666"),
+        stakeNo: parseEther("334"),
         expectedResult: false,
       },
     ];
@@ -59,17 +63,20 @@ describe("QuorumCalculator library", function () {
         const { quorumCalculator } = await helpers.loadFixture(deployContracts);
 
         const votingResult = {
-          countYes: args.stakeYes / ethers.parseEther("1"),
-          countNo: args.stakeNo / ethers.parseEther("1"),
+          countYes: args.stakeYes / parseEther("1"),
+          countNo: args.stakeNo / parseEther("1"),
           stakeYes: args.stakeYes,
-          stakeNo: args.stakeNo
+          stakeNo: args.stakeNo,
         };
 
         const totalStakedAmount = args.stakeYes + args.stakeNo;
 
-        const result = await quorumCalculator.lowMajorityQuorum(votingResult, totalStakedAmount);
+        const result = await quorumCalculator.read.lowMajorityQuorum([
+          votingResult,
+          totalStakedAmount,
+        ]);
 
-        expect(result).to.eq(args.expectedResult);
+        assert.equal(result, args.expectedResult);
       });
     });
   });
@@ -78,14 +85,14 @@ describe("QuorumCalculator library", function () {
     const TestCases = [
       {
         name: "all votes are Yes",
-        stakeYes: ethers.parseEther("1000"),
+        stakeYes: parseEther("1000"),
         stakeNo: 0n,
         expectedResult: true,
       },
       {
         name: "Yes votes exceed No votes by at least 1/2 of total",
-        stakeYes: ethers.parseEther("800"),
-        stakeNo: ethers.parseEther("200"),
+        stakeYes: parseEther("800"),
+        stakeNo: parseEther("200"),
         expectedResult: true,
       },
       {
@@ -94,22 +101,22 @@ describe("QuorumCalculator library", function () {
         // No * 6 + required = 250 * 6 + 3000 = 4500
         // 4500 >= 4500
         name: "Yes votes exactly meet the required threshold (1/2 of total)",
-        stakeYes: ethers.parseEther("750"),
-        stakeNo: ethers.parseEther("250"),
+        stakeYes: parseEther("750"),
+        stakeNo: parseEther("250"),
         expectedResult: true,
       },
       {
         name: "all votes are No",
         stakeYes: 0n,
-        stakeNo: ethers.parseEther("1000"),
+        stakeNo: parseEther("1000"),
         expectedResult: false,
       },
       {
         name: "Yes votes don't exceed No votes by required threshold",
-        stakeYes: ethers.parseEther("700"),
-        stakeNo: ethers.parseEther("300"),
+        stakeYes: parseEther("700"),
+        stakeNo: parseEther("300"),
         expectedResult: false,
-      }
+      },
     ];
 
     TestCases.forEach((args) => {
@@ -117,17 +124,20 @@ describe("QuorumCalculator library", function () {
         const { quorumCalculator } = await helpers.loadFixture(deployContracts);
 
         const votingResult = {
-          countYes: args.stakeYes / ethers.parseEther("1"),
-          countNo: args.stakeNo / ethers.parseEther("1"),
+          countYes: args.stakeYes / parseEther("1"),
+          countNo: args.stakeNo / parseEther("1"),
           stakeYes: args.stakeYes,
-          stakeNo: args.stakeNo
+          stakeNo: args.stakeNo,
         };
 
         const totalStakedAmount = args.stakeYes + args.stakeNo;
 
-        const result = await quorumCalculator.highMajorityQuorum(votingResult, totalStakedAmount);
+        const result = await quorumCalculator.read.highMajorityQuorum([
+          votingResult,
+          totalStakedAmount,
+        ]);
 
-        expect(result).to.eq(args.expectedResult);
+        assert.equal(result, args.expectedResult);
       });
     });
   });
